@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+._*
+
+# build outputs (regenerable: make frei0r)
+build/
+
+# archived work
+archive/
+
+# compiled binaries (regenerable via Makefile)
+harness/harness
+harness/harness_asan
+tools/f0r_host
+tools/checkmask
+tools/sprcmp
+
+# local media (test inputs + render outputs)
+inputvideos/
+outputvideos/
+
+# scratch (local debug tools + sources)
+scratch/
+
+# cloned reference repos (not required to build)
+reference/

@@ -1,0 +1,3 @@
+-std=c99
+-Icore
+-Ireference/frei0r/include

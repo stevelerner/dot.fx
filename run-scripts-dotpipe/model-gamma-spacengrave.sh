@@ -16,7 +16,7 @@
 #     size | fill | halftone | line | level | grain | color | dim | gate
 #   This recipe: 5 85 80 68 200 78 360 100 5 — the ORIGINAL approved
 #   params (same values, space-separated here instead of |).
-#   (Per-parameter docs: run-scripts-frei0r/model-gamma-spacengrave-metal.sh.)
+#   (Per-parameter docs: archive/frei0r/run-scripts/model-gamma-spacengrave-metal.sh.)
 #
 # STAGE 3 — encode (libx264 crf 20, yuv444p — same as the frei0r recipe)
 #

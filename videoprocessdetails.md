@@ -77,7 +77,7 @@ as **scanlines** that behave like engraved ink:
   subject.
 
 The approved recipe also runs a pipeline *around* the effect (see
-`run-scripts-frei0r/model-gamma-spacengrave-metal.sh` for the per-stage docs):
+`run-scripts-dotpipe/model-gamma-spacengrave.sh` for the per-stage docs):
 
 - **2× supersample (lanczos) → effect → down** — dash geometry computed
   on a finer grid reads smoother after the downsample.
@@ -141,7 +141,7 @@ bite you if you reorder or re-blend:
   `blend` rejects.
 
 (That overlay variant is the parked `vintagestack.sh` in
-`run-scripts-frei0r/storage/`; the active scripts run the bare nine-effect
+`archive/frei0r/run-scripts/storage/`; the active dotpipe scripts run the bare nine-effect
 stack.)
 
 ## Backends and parity (summary)
@@ -149,6 +149,6 @@ stack.)
 `dot.*` + `vid.glitch` have Metal implementations; `RETROFX_BACKEND`
 selects `cpu` / `metal` / `dual`. The CPU core is the reference — the
 Metal path must be byte-identical (the `dual` cross-check is the
-acceptance gate; `tools/f0r_host` drives it). Numbers: `PERFORMANCE.md`.
+acceptance gate; dotpipe's `dual` backend drives it). Numbers: `PERFORMANCE.md`.
 The 2048-row bound on `metal_spacengrave` is the one known, deliberate
 CPU fallback.

@@ -261,6 +261,8 @@ static void retrofx_dual_diff(retrofx_instance_t *inst, int frame,
 }
 #endif
 
+#if RETROFX_EFFECT == RETROFX_EFFECT_DOTGATE || RETROFX_EFFECT == RETROFX_EFFECT_VID_GLITCH || \
+    RETROFX_EFFECT == RETROFX_EFFECT_DOTPORTAL || RETROFX_EFFECT == RETROFX_EFFECT_DOT_SPACENGRAVE
 /* Backend dispatch (RETROFX_BACKEND) for the Metal-enabled effects —
  * one shared path; the per-effect wrappers in this #if chain bind the
  * core + Metal function pair. CPU stays the reference; Metal is
@@ -328,6 +330,7 @@ static void retrofx_dispatch(retrofx_instance_t *inst, uint8_t *rgb,
         cpu(rgb, w, h, stride, p, frame);
     }
 }
+#endif
 
 #if RETROFX_EFFECT == RETROFX_EFFECT_DOTGATE
 static void retrofx_run_dotgate(retrofx_instance_t *inst, uint8_t *rgb,

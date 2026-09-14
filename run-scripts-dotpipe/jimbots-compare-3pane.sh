@@ -4,7 +4,7 @@
 #
 #   LEFT   = ORIGINAL — the untouched source plate.
 #   MIDDLE = VINTAGE — the dotpipe vintage chain (same recipe as
-#            run-scripts-frei0r/jimbots-vintage.sh, core values), applied
+#            archive/frei0r/run-scripts/jimbots-vintage.sh, core values), applied
 #            to jimbots.mp4 at native 1920×1080.
 #   RIGHT  = GAMMA + SPAcENGRAVE — the approved "just gamma" recipe:
 #            eq=gamma=1.5 + dot.spacengrave 5 85 80 68 200 78 360 100 5
@@ -36,7 +36,7 @@
 # silently be the CPU pass.
 #
 # Vintage chain params (core values; dial values in parentheses —
-# meaning: run-scripts-frei0r/jimbots-vintage.sh header):
+# meaning: archive/frei0r/run-scripts/jimbots-vintage.sh header):
 #   bloom 1.20 0.10 16 (60|0.10|16) · bleed 4 1.0 (chromablood 25) ·
 #   lumar 0.50 4 (25|4) · rainbow 0.80 48 16 (40|48|16) ·
 #   wow 8 90 (tapewow 8|90) · scanlines 0.65 3 0 (65|3|0) ·

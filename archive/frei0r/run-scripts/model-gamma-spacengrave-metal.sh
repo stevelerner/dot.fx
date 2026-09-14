@@ -40,11 +40,11 @@
 # 2048-row Metal bound (unlike the supersampled pair, which falls back
 # to CPU by design; output parity holds either way).
 #
-# Usage:  sh run-scripts-frei0r/model-gamma-spacengrave-metal.sh [-i input] [-o output]
+# Usage:  sh archive/frei0r/run-scripts/model-gamma-spacengrave-metal.sh [-i input] [-o output]
 #         (defaults: inputvideos/model.mp4 → outputvideos/model-gamma-spacengrave-metal.mp4)
 set -eu
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 IN=inputvideos/model.mp4
 OUT=outputvideos/model-gamma-spacengrave-metal.mp4
@@ -52,13 +52,13 @@ while getopts "i:o:" opt; do
   case $opt in
     i) IN=$OPTARG ;;
     o) OUT=$OPTARG ;;
-    *) echo "usage: sh run-scripts-frei0r/model-gamma-spacengrave-metal.sh [-i input] [-o output]" >&2
+    *) echo "usage: sh archive/frei0r/run-scripts/model-gamma-spacengrave-metal.sh [-i input] [-o output]" >&2
        exit 2 ;;
   esac
 done
 mkdir -p "$(dirname "$OUT")"
 
-FREI0R_PATH=$PWD/build RETROFX_BACKEND=metal \
+FREI0R_PATH=$PWD/archive/frei0r/build RETROFX_BACKEND=metal \
   ffmpeg -hide_banner -loglevel error -y -i "$IN" \
   -vf "eq=gamma=1.5,frei0r=libretrofx_dot_spacengrave:5|85|80|68|200|78|360|100|5" \
   -c:v libx264 -preset medium -crf 20 -pix_fmt yuv444p \

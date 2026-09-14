@@ -4,7 +4,7 @@
 #
 #   LEFT   = ORIGINAL — the untouched source plate.
 #   MIDDLE = VINTAGE — the dotpipe vintage chain (same recipe as
-#            run-scripts-frei0r/model-vintage.sh, core values), applied
+#            archive/frei0r/run-scripts/model-vintage.sh, core values), applied
 #            to model.mp4 at native 720×1280 so it matches the other
 #            two panes.
 #   RIGHT  = GAMMA + SPAcENGRAVE — the approved "just gamma" recipe:
@@ -37,7 +37,7 @@
 # silently be the CPU pass.
 #
 # Vintage chain params (core values; dial values in parentheses —
-# meaning: run-scripts-frei0r/model-vintage.sh header):
+# meaning: archive/frei0r/run-scripts/model-vintage.sh header):
 #   bloom 1.20 0.10 16 (60|0.10|16) · bleed 4 1.0 (chromablood 25) ·
 #   lumar 0.50 4 (25|4) · rainbow 0.80 48 16 (40|48|16) ·
 #   wow 8 90 (tapewow 8|90) · scanlines 0.65 3 0 (65|3|0) ·

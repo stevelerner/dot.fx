@@ -1,28 +1,30 @@
 # Performance — CPU vs Metal (measured 2026-09-13)
 
 The four GPU effects (`dot.gate`, `dot.portal`, `dot.spacengrave`,
-`vid.glitch`) — CPU core vs Metal, on the two `inputvideos/` videos.
-The cores are shared by dotpipe and the archived frei0r plugins, so the
-per-effect numbers apply to both.
+`vid.glitch`) — CPU core vs Metal, in a real FFmpeg pipeline, on the two
+`inputvideos/` videos.
+
+These pipeline runs went through the frei0r filter (the archived
+method); the effect cores are the shared `core/` C, so the numbers
+apply to dotpipe too. Dotpipe end-to-end timings: the root
+`PERFORMANCE.md`.
 
 ## Machine
-Apple M4 Pro (Mac16,11), macOS 26.6.2, Homebrew ffmpeg (Lavc63.1.101).
+Apple M4 Pro (Mac16,11), macOS 26.6.2, Homebrew `ffmpeg-full`
+(Lavc63.1.101) with frei0r.
 
 ## Method
-- Per-effect pipeline runs: `ffmpeg -filter_threads 1 -i <input> -f rawvideo
-  -pix_fmt rgb24 - | RETROFX_BACKEND=cpu|metal ./dotpipe/dotpipe -w <w> -h <h>
-  --<fx> ... | ffmpeg -f rawvideo ... -i - -f null -` — decode + effect only,
-  no encode. (Measured through the shared C cores; the archived frei0r
-  pipeline shows the same per-effect behavior —
-  `archive/frei0r/PERFORMANCE.md`.)
-- `RETROFX_BACKEND=cpu` vs `metal`. Numbers are wall-clock (includes decode
-  overhead — honest end-to-end, not a kernel microbenchmark).
-- Params: approved recipe where one exists (`dotgate 28 8`, spacengrave
-  `5 85 80 68 200 78 360 100 5`), defaults otherwise.
+- `ffmpeg -filter_threads 1 -i <input> -vf "frei0r=libretrofx_<fx>:<params>"
+  -an -f null -` — decode + effect only, no encode; `FREI0R_PATH=archive/frei0r/build`.
+- `RETROFX_BACKEND=cpu` vs `metal`. Numbers are FFmpeg's wall-clock
+  `speed` (includes decode overhead — honest end-to-end, not a kernel
+  microbenchmark).
+- Params: approved recipe where one exists (`dotgate 28|8`, spacengrave
+  `10|85|80|68|200|78|360|100|5`), adapter defaults otherwise.
 - Metal pipeline compiles on first frame of each process; that one-time
   cost is inside the measured runs (a fraction of a second against
   274/816 frames — small next to the measured margins).
-- Zero CPU-fallback warnings across all runs: the Metal path genuinely
+- Zero CPU-fallback warnings across all 16 runs: the Metal path genuinely
   executed (both inputs sit under the 2048-row bound).
 - Stability: two full passes over the script battery differ by 1–3%
   (e.g. 10.8 s vs 11.2 s) — the numbers below are reproducible within
@@ -38,7 +40,7 @@ Apple M4 Pro (Mac16,11), macOS 26.6.2, Homebrew ffmpeg (Lavc63.1.101).
 
 | Effect | CPU | Metal | Metal win |
 |---|---|---|---|
-| `dot.gate` (28 8) | 0.74× · 18.5 s | 1.88× · 7.3 s | **2.5×** |
+| `dot.gate` (28\|8) | 0.74× · 18.5 s | 1.88× · 7.3 s | **2.5×** |
 | `dot.spacengrave` (recipe) | 0.80× · 17.1 s | 1.36× · 10.1 s | **1.7×** |
 | `vid.glitch` (defaults) | 6.43× · 2.1 s | 11.6× · 1.2 s | **1.8×** |
 | `dot.portal` (defaults) | 1.52× · 9.0 s | 1.92× · 7.1 s | **1.26×** |
@@ -47,7 +49,7 @@ Apple M4 Pro (Mac16,11), macOS 26.6.2, Homebrew ffmpeg (Lavc63.1.101).
 
 | Effect | CPU | Metal |
 |---|---|---|
-| `dot.gate` (28 8) | 3.38× · 2.7 s | 4.6× · 2.0 s |
+| `dot.gate` (28\|8) | 3.38× · 2.7 s | 4.6× · 2.0 s |
 | `dot.spacengrave` (recipe) | 3.65× · 2.5 s | 4.78× · 1.9 s |
 | `vid.glitch` (defaults) | 33× · 0.27 s | 47× · 0.19 s |
 | `dot.portal` (defaults) | 8.79× · 1.0 s | 5.32× · 1.7 s |
@@ -77,9 +79,21 @@ fps = frames/s the stage sustains; ≥59.94 fps (jimbots) or ≥30 fps
 `dot.gate` and `dot.spacengrave` are the heavyweights on CPU
 (≈21 ms/f @1080p) but both clear real-time on Metal.
 
-## End-to-end render scripts (wall clock, decode + effects + encode)
+## End-to-end render scripts (wall clock, decode + effect + encode)
 
-`run-scripts-dotpipe/`, defaults, measured 2026-09-13:
+`archive/frei0r/run-scripts/`, defaults, measured 2026-09-13:
+
+| Script | Workload | Wall |
+|---|---|---|
+| `model-gamma-spacengrave-metal.sh` | 274 f, GPU | 2.6 s |
+| `model-vintage.sh` | 274 f, 9-effect `vid.*` CPU stack | 17.9 s |
+| `model-compare-3pane.sh` | 274 f × 3 branches | 21.7 s |
+| `jimbots-gamma-spacengrave-metal.sh` | 816 f, GPU | 13.9 s |
+| `jimbots-vintage.sh` | 816 f, 9-effect `vid.*` CPU stack | 118.0 s |
+| `jimbots-compare-3pane.sh` | 816 f × 3 branches | 139.5 s |
+
+`run-scripts-dotpipe/`, defaults, measured 2026-09-13 (same workloads —
+the raw-pipe host keeps within ~10 % of the frei0r pipeline):
 
 | Script | Workload | Wall |
 |---|---|---|
@@ -89,10 +103,6 @@ fps = frames/s the stage sustains; ≥59.94 fps (jimbots) or ≥30 fps
 | `jimbots-gamma-spacengrave.sh` | 816 f, GPU | 14.3 s |
 | `jimbots-vintage.sh` | 816 f, 9-effect `vid.*` CPU stack | 113.4 s |
 | `jimbots-compare-3pane.sh` | 816 f × 3 branches | 137.7 s |
-
-Same workloads through the archived frei0r method — within ~10 %
-(`archive/frei0r/PERFORMANCE.md`): 2.6 s / 17.9 s / 21.7 s (model),
-13.9 s / 118.0 s / 139.5 s (jimbots).
 
 ## Reading the numbers
 - **At 1080p Metal wins on all four — 1.26–2.5×.** `dot.gate` has the
@@ -114,12 +124,10 @@ Same workloads through the archived frei0r method — within ~10 %
 
 ## Reproduce
 ```sh
-# per-effect, CPU then Metal (jimbots):
+export FREI0R_PATH="$PWD/archive/frei0r/build"
+export RETROFX_BACKEND=cpu     # then repeat with =metal
 ffmpeg -hide_banner -y -filter_threads 1 -i inputvideos/jimbots.mp4 \
-  -f rawvideo -pix_fmt rgb24 - \
-  | RETROFX_BACKEND=cpu ./dotpipe/dotpipe -w 1920 -h 1080 --dotgate 28 8 \
-  | ffmpeg -hide_banner -f rawvideo -pix_fmt rgb24 -s 1920x1080 -i - -f null -
-# repeat with RETROFX_BACKEND=metal
-# end-to-end recipes:
-time sh run-scripts-dotpipe/model-gamma-spacengrave.sh
+  -vf "frei0r=libretrofx_dotgate:28|8" -an -f null -
+# final stats line:  frame= 816 ... speed=0.741x elapsed=0:00:18.48  (cpu)
+#                    frame= 816 ... speed=1.88x  elapsed=0:00:07.27  (metal)
 ```

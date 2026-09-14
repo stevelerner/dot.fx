@@ -2,9 +2,6 @@
 .DS_Store
 ._*
 
-# build outputs (regenerable: make frei0r)
-build/
-
 # archived work
 archive/
 
@@ -12,7 +9,6 @@ archive/
 harness/harness
 harness/harness_asan
 dotpipe/dotpipe
-tools/f0r_host
 tools/checkmask
 tools/sprcmp
 
@@ -22,6 +18,3 @@ outputvideos/
 
 # scratch (local debug tools + sources)
 scratch/
-
-# cloned reference repos (not required to build)
-reference/

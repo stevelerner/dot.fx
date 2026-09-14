@@ -1,25 +1,27 @@
 # AGENTS.md
 
-Retro video FX: C99 effect cores with a Metal GPU backend, exposed as frei0r
-plugins. macOS.
+Retro video FX: C99 effect cores with a Metal GPU backend, shipped via
+dotpipe (raw-pipe effect host; ffmpeg is codec only). macOS.
 
 ## Commands
-build harness:  make
-build plugins:  make frei0r          # 12 dylibs into build/ + tools/f0r_host
-test images:    make inputvideos
+build:          make        # → dotpipe/dotpipe (+ harness, testimgs)
 clean:          make clean
 
-verify a plugin:
-  tools/f0r_host build/libretrofx_<fx>.dylib <apply|identity|roundtrip|determinism> [w h]
+Verify with a single raw frame through the effect, CPU then Metal:
+  ./dotpipe/dotpipe -w 720 -h 1280 --dotgate 28 8 10 < in.raw > out.raw
 
 Backend selection is by env var: RETROFX_BACKEND=cpu (default) | metal | dual.
 `dual` runs both and byte-compares, returning the CPU result — use it to check
-GPU parity:
-  RETROFX_BACKEND=dual tools/f0r_host build/libretrofx_dotgate.dylib apply 1280 720
+GPU parity (exit non-zero + stderr line on mismatch):
+  RETROFX_BACKEND=dual ./dotpipe/dotpipe -w 1280 -h 720 --dotgate 28 8 10 < in.raw > out.raw
 
-Build the affected plugin and run the narrowest relevant f0r_host check before
-declaring work done. `-Wall -Wextra -Werror` is on: any warning is a build
-failure, including unused variables.
+Rebuild dotpipe and run the narrowest relevant check before declaring work
+done. `-Wall -Wextra -Werror` is on: any warning is a build failure,
+including unused variables.
+
+Archived frei0r plugin method: `archive/frei0r/` (own Makefile/README/
+PERFORMANCE; builds with `make -f archive/frei0r/Makefile <single-target>`;
+verified with `archive/frei0r/f0r_host`).
 
 ## Rules
 - **Do exactly what was asked — no drift, no overthinking.**
@@ -67,13 +69,11 @@ failure, including unused variables.
 
 ## Layout
 core/              effect implementations (crt.c, vhs.c, dot.c, glitch.c) + metal_fx.m
-frei0r-adapter/    retrofx.c — one dylib per effect via -DRETROFX_EFFECT
-harness/, tools/   local test harness + render recipes; full inventory: tools/TOOLS.md
-reference/frei0r   upstream frei0r headers
-inputvideos/, examples/, build/
+dotpipe/           raw-pipe effect host (the active method) + dotpipe.c
+run-scripts-dotpipe/  approved-look render recipes
+harness/, tools/   local test harness + diagnostics; full inventory: tools/TOOLS.md
+archive/frei0r/    archived frei0r plugin method (README + PERFORMANCE + scripts)
+inputvideos/, testimgs/, outputvideos/
 
-plan/dotgate.md is the dot.gate plan (shipped spec + controls roadmap);
-plan/vidglitch.md is the vid.glitch spec. HANDOFF.md is current in-flight
-state — read it before starting.
 tools/TOOLS.md = tool inventory + environment/install requirements — read it
 when setting up or debugging the environment.

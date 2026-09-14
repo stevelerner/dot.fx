@@ -1,12 +1,12 @@
 #!/bin/sh
-# jimbots-vintage.sh — full vintage stack (no dot.gate), NO glitch.
+# model-vintage.sh — full vintage stack (no dot.gate), NO glitch.
 # The nine vid.* CRT/VHS effects at their locked levels, on a portrait
 # subject at NATIVE geometry (no scale — the subject is not stretched).
 # Tuned 2026-09-03: glitch removed, shadowmask 15→4, bloom 40→60,
 # barrel 25→35, scanlines 35→65.
 #
-# Usage:  sh run-scripts-frei0r/jimbots-vintage.sh [-i input] [-o output]
-#         (defaults: inputvideos/jimbots.mp4 → outputvideos/jimbots-vintage.mp4)
+# Usage:  sh archive/frei0r/run-scripts/model-vintage.sh [-i input] [-o output]
+#         (defaults: inputvideos/model.mp4 → outputvideos/model-vintage.mp4)
 #
 # Effect params (pipe values → meaning, in chain order; each effect gets
 # a plain-English description first):
@@ -46,21 +46,21 @@
 #    recipe; the user asked for none at all in the compare lineup.)
 set -eu
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
-IN=inputvideos/jimbots.mp4
-OUT=outputvideos/jimbots-vintage.mp4
+IN=inputvideos/model.mp4
+OUT=outputvideos/model-vintage.mp4
 while getopts "i:o:" opt; do
   case $opt in
     i) IN=$OPTARG ;;
     o) OUT=$OPTARG ;;
-    *) echo "usage: sh run-scripts-frei0r/jimbots-vintage.sh [-i input] [-o output]" >&2
+    *) echo "usage: sh archive/frei0r/run-scripts/model-vintage.sh [-i input] [-o output]" >&2
        exit 2 ;;
   esac
 done
 mkdir -p "$(dirname "$OUT")"
 
-FREI0R_PATH=$PWD/build ffmpeg -hide_banner -loglevel error -y -i "$IN" \
+FREI0R_PATH=$PWD/archive/frei0r/build ffmpeg -hide_banner -loglevel error -y -i "$IN" \
   -vf "frei0r=libretrofx_vid_bloom:60|0.10|16,
        frei0r=libretrofx_vid_chromablood:25,
        frei0r=libretrofx_vid_lumar:25|4,
@@ -75,5 +75,5 @@ FREI0R_PATH=$PWD/build ffmpeg -hide_banner -loglevel error -y -i "$IN" \
   "$OUT"
 
 # Geometry note: no `scale=` — the subject keeps its native portrait
-# resolution (e.g. 720x1280 for inputvideos/jimbots.mp4) rather than being
+# resolution (e.g. 720x1280 for inputvideos/model.mp4) rather than being
 # stretched to a landscape frame.

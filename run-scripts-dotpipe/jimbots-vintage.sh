@@ -2,7 +2,7 @@
 # jimbots-vintage.sh — full vintage stack (no dot.gate), NO glitch, via
 # dotpipe (the raw-pipe effect host): ffmpeg decodes to raw RGB24,
 # dotpipe applies the ten-effect chain IN ORDER, ffmpeg encodes.
-# Same recipe as run-scripts-frei0r/jimbots-vintage.sh, in
+# Same recipe as archive/frei0r/run-scripts/jimbots-vintage.sh, in
 # dotpipe-native core values (dial value in parentheses):
 #
 #   bloom       1.20 0.10 16   Soft glow on highlights (60|0.10|16).
@@ -29,7 +29,7 @@
 #   overscan    24 4           Rounded corners + bezel crop (24|4).
 #                              24 = radius px · 4 = crop px
 #
-# (Per-parameter meaning: run-scripts-frei0r/jimbots-vintage.sh header.)
+# (Per-parameter meaning: archive/frei0r/run-scripts/jimbots-vintage.sh header.)
 #
 # All ten effects are CPU core (the Metal implementations cover
 # glitch/dotgate/portal/spacengrave) — no GPU needed.

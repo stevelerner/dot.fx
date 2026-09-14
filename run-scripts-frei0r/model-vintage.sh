@@ -5,7 +5,7 @@
 # Tuned 2026-09-03: glitch removed, shadowmask 15→4, bloom 40→60,
 # barrel 25→35, scanlines 35→65.
 #
-# Usage:  sh run-scripts/model-vintage.sh [-i input] [-o output]
+# Usage:  sh run-scripts-frei0r/model-vintage.sh [-i input] [-o output]
 #         (defaults: inputvideos/model.mp4 → outputvideos/model-vintage.mp4)
 #
 # Effect params (pipe values → meaning, in chain order; each effect gets
@@ -54,7 +54,7 @@ while getopts "i:o:" opt; do
   case $opt in
     i) IN=$OPTARG ;;
     o) OUT=$OPTARG ;;
-    *) echo "usage: sh run-scripts/model-vintage.sh [-i input] [-o output]" >&2
+    *) echo "usage: sh run-scripts-frei0r/model-vintage.sh [-i input] [-o output]" >&2
        exit 2 ;;
   esac
 done

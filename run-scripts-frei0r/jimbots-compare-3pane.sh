@@ -1,12 +1,12 @@
 #!/bin/sh
-# model-compare-3pane.sh — three-pane comparison of inputvideos/model.mp4,
+# jimbots-compare-3pane.sh — three-pane comparison of inputvideos/jimbots.mp4,
 # one source fanned into three branches, hstacked left to right:
 #
 #   LEFT   = ORIGINAL — the untouched source plate.
-#   MIDDLE = VINTAGE — run-scripts/storage/model-vintage.sh recipe
+#   MIDDLE = VINTAGE — run-scripts-frei0r/storage/jimbots-vintage.sh recipe
 #            (the nine vid.* CRT/VHS effects, NO dot.gate layer, NO
 #            glitch — tuned 2026-09-03: bloom 60, scanlines 65,
-#            shadowmask 4, barrel 35), applied to model.mp4 at native
+#            shadowmask 4, barrel 35), applied to jimbots.mp4 at native
 #            720×1280 so it matches the other two panes.
 #            Params → meaning:
 #              bloom       60|0.10|16   Soft glow on highlights (strength,
@@ -30,18 +30,18 @@
 #              (glitch removed on 2026-09-03.)
 #   RIGHT  = GAMMA SPAcENGRAVE — the approved "just gamma" recipe:
 #            eq=gamma=1.5 + dot.spacengrave 5|85|80|68|200|78|360|100|5
-#            (run-scripts/model-gamma-spacengrave-metal.sh recipe).
+#            (run-scripts-frei0r/jimbots-gamma-spacengrave-metal.sh recipe).
 #
-#   out = outputvideos/model_3pane.mp4   (default 3×720 × 1280 = 2160×1280)
+#   out = outputvideos/jimbots_3pane.mp4   (default 3×720 × 1280 = 2160×1280)
 #
 # Each branch is fitted into an identical WxH cell (aspect preserved,
 # padded, no stretch) so all three panes always match — even if you
 # swap in different sources or tweak a branch to a different size.
 #
-# Usage:  sh run-scripts/model-compare-3pane.sh [-i input] [-o output]
+# Usage:  sh run-scripts-frei0r/jimbots-compare-3pane.sh [-i input] [-o output]
 #         [-w 720] [-h 1280]
 #
-# ── MIDDLE branch: the vintage (model-vintage.sh recipe) ────────────────
+# ── MIDDLE branch: the vintage (jimbots-vintage.sh recipe) ────────────────
 #   (param docs above; chain order below)
 # ── RIGHT branch: gamma + dot.spacengrave ─────────────────────────────
 #   eq=gamma=1.5                Darks-only shadow lift (the approved
@@ -62,8 +62,8 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-IN=inputvideos/model.mp4
-OUT=outputvideos/model_3pane.mp4
+IN=inputvideos/jimbots.mp4
+OUT=outputvideos/jimbots_3pane.mp4
 W=720
 H=1280
 while getopts "i:o:w:h:" opt; do
@@ -72,7 +72,7 @@ while getopts "i:o:w:h:" opt; do
     o) OUT=$OPTARG ;;
     w) W=$OPTARG ;;
     h) H=$OPTARG ;;
-    *) echo "usage: sh run-scripts/model-compare-3pane.sh [-i input] [-o output] [-w 720] [-h 1280]" >&2
+    *) echo "usage: sh run-scripts-frei0r/jimbots-compare-3pane.sh [-i input] [-o output] [-w 720] [-h 1280]" >&2
        exit 2 ;;
   esac
 done
@@ -84,10 +84,10 @@ cell() {
   echo "scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1"
 }
 
-# The vintage chain (model-vintage.sh recipe, no dot layer, no glitch).
+# The vintage chain (jimbots-vintage.sh recipe, no dot layer, no glitch).
 VINTAGE="frei0r=libretrofx_vid_bloom:60|0.10|16,frei0r=libretrofx_vid_chromablood:25,frei0r=libretrofx_vid_lumar:25|4,frei0r=libretrofx_vid_rainbow:40|48|16,frei0r=libretrofx_vid_tapewow:8|90,frei0r=libretrofx_vid_scanlines:65|3|0,frei0r=libretrofx_vid_shadowmask:0|4|3,frei0r=libretrofx_vid_vignette:35,frei0r=libretrofx_vid_barrel:35|100,frei0r=libretrofx_vid_overscan:24|4"
 
-# LEFT   = original | MIDDLE = vintage (model-vintage recipe) | RIGHT = gamma + spacengrave
+# LEFT   = original | MIDDLE = vintage (jimbots-vintage recipe) | RIGHT = gamma + spacengrave
 FREI0R_PATH=$PWD/build ffmpeg -hide_banner -loglevel error -y -i "$IN" \
   -filter_complex "
     [0:v]split=3[src0][src1][src2];

@@ -77,7 +77,7 @@ as **scanlines** that behave like engraved ink:
   subject.
 
 The approved recipe also runs a pipeline *around* the effect (see
-`run-scripts/model-spacengrave.sh` for the per-stage docs):
+`run-scripts-frei0r/model-gamma-spacengrave-metal.sh` for the per-stage docs):
 
 - **2× supersample (lanczos) → effect → down** — dash geometry computed
   on a finer grid reads smoother after the downsample.
@@ -141,7 +141,7 @@ bite you if you reorder or re-blend:
   `blend` rejects.
 
 (That overlay variant is the parked `vintagestack.sh` in
-`run-scripts/storage/`; the active scripts run the bare nine-effect
+`run-scripts-frei0r/storage/`; the active scripts run the bare nine-effect
 stack.)
 
 ## Backends and parity (summary)

@@ -4,6 +4,7 @@ CFLAGS  += -Icore
 LDLIBS  += -lm
 
 HARNESS   = harness/harness
+DOTPIPE   = dotpipe/dotpipe
 MKTESTIMG = tools/mktestimg
 F0RHOST   = tools/f0r_host
 F0R_INCL  = -Ireference/frei0r/include
@@ -30,7 +31,7 @@ F0R_LIBS  = $(F0R_BUILD)/libretrofx_vid_scanlines.dylib \
             $(F0R_BUILD)/libretrofx_dotportal.dylib \
             $(F0R_BUILD)/libretrofx_dot_spacengrave.dylib
 
-all: $(HARNESS)
+all: $(HARNESS) $(DOTPIPE)
 
 frei0r: $(F0R_LIBS) $(F0RHOST)
 
@@ -103,9 +104,12 @@ testimgs/bars.ppm: $(MKTESTIMG)
 $(HARNESS): harness/main.c core/crt.c core/vhs.c core/glitch.c core/dot.c core/crt.h core/vhs.h core/glitch.h core/dot.h core/fx_hash.h
 	$(CC) $(CFLAGS) -o $@ harness/main.c core/crt.c core/vhs.c core/glitch.c core/dot.c $(LDLIBS)
 
+$(DOTPIPE): dotpipe/dotpipe.c core/crt.c core/vhs.c core/glitch.c core/dot.c core/metal_fx.m core/crt.h core/vhs.h core/glitch.h core/dot.h core/fx_hash.h core/metal_fx.h
+	$(CC) $(CFLAGS) -o $@ dotpipe/dotpipe.c core/crt.c core/vhs.c core/glitch.c core/dot.c core/metal_fx.m $(LDLIBS) -framework Metal -framework Foundation
+
 .PHONY: all testimgs clean frei0r
 testimgs: testimgs/bars.ppm
 
 clean:
-	rm -f $(HARNESS) $(MKTESTIMG) $(F0RHOST)
+	rm -f $(HARNESS) $(DOTPIPE) $(MKTESTIMG) $(F0RHOST)
 	rm -rf $(F0R_BUILD)

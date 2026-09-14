@@ -76,18 +76,28 @@ fps = frames/s the stage sustains; ≥59.94 fps (jimbots) or ≥30 fps
 
 ## End-to-end render scripts (wall clock, decode + effect + encode)
 
-`run-scripts/`, defaults, measured 2026-09-13:
+`run-scripts-frei0r/`, defaults, measured 2026-09-13:
 
 | Script | Workload | Wall |
 |---|---|---|
 | `model-gamma-spacengrave-metal.sh` | 274 f, GPU | 2.6 s |
-| `model-spacengrave-metal.sh` | 274 f, 2× supersample → CPU core by row bound | 11.2 s |
 | `model-vintage.sh` | 274 f, 9-effect `vid.*` CPU stack | 17.9 s |
 | `model-compare-3pane.sh` | 274 f × 3 branches | 21.7 s |
-| `jimbots-spacengrave-metal.sh` | 816 f, GPU | 13.4 s |
 | `jimbots-gamma-spacengrave-metal.sh` | 816 f, GPU | 13.9 s |
 | `jimbots-vintage.sh` | 816 f, 9-effect `vid.*` CPU stack | 118.0 s |
 | `jimbots-compare-3pane.sh` | 816 f × 3 branches | 139.5 s |
+
+`run-scripts-dotpipe/`, defaults, measured 2026-09-13 (same workloads —
+the raw-pipe host keeps within ~10 % of the frei0r pipeline):
+
+| Script | Workload | Wall |
+|---|---|---|
+| `model-gamma-spacengrave.sh` | 274 f, GPU | 3.0 s |
+| `model-vintage.sh` | 274 f, 9-effect `vid.*` CPU stack | 16.4 s |
+| `model-compare-3pane.sh` | 274 f × 3 branches | 23.6 s |
+| `jimbots-gamma-spacengrave.sh` | 816 f, GPU | 14.3 s |
+| `jimbots-vintage.sh` | 816 f, 9-effect `vid.*` CPU stack | 113.4 s |
+| `jimbots-compare-3pane.sh` | 816 f × 3 branches | 137.7 s |
 
 ## Reading the numbers
 - **At 1080p Metal wins on all four — 1.26–2.5×.** `dot.gate` has the

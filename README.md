@@ -73,12 +73,14 @@ override the defaults):
 
 | Script | What it renders |
 |---|---|
-| `model-vintage.sh` / `jimbots-vintage.sh` | the full 9-effect `vid.*` CRT/VHS stack at locked levels (portrait subject / 1080p) |
-| `model-spacengrave-metal.sh` (base: `model-spacengrave.sh`) | the approved `dot.spacengrave` recipe — 2× supersample, gamma shadow lift, effect at `10\|85\|80\|68\|200\|78\|360\|100\|5` (supersampled intermediate exceeds the 2048-row Metal bound, so the effect renders on the CPU core by design — output is byte-identical) |
-| `model-gamma-spacengrave-metal.sh` | the gamma-lift-only A/B half of the same recipe |
-| `model-compare-3pane.sh` / `jimbots-compare-3pane.sh` | three-pane hstacked comparison of the same source |
+| `run-scripts-frei0r/model-vintage.sh` / `jimbots-vintage.sh` | the full 9-effect `vid.*` CRT/VHS stack at locked levels (portrait subject / 1080p) |
+| `run-scripts-dotpipe/model-vintage.sh` / `jimbots-vintage.sh` | that same stack via `dotpipe` (the raw-pipe host below) — no frei0r needed |
+| `run-scripts-frei0r/model-gamma-spacengrave-metal.sh` | the approved `dot.spacengrave` recipe — gamma shadow lift, native resolution, effect at `5\|85\|80\|68\|200\|78\|360\|100\|5` (720×1280 is under the 2048-row Metal bound, so this one genuinely runs on the GPU) |
+| `run-scripts-dotpipe/model-gamma-spacengrave.sh` / `jimbots-gamma-spacengrave.sh` | that same approved look via `dotpipe` instead of frei0r |
+| `run-scripts-frei0r/model-compare-3pane.sh` / `jimbots-compare-3pane.sh` | three-pane hstacked comparison of the same source |
+| `run-scripts-dotpipe/model-compare-3pane.sh` / `jimbots-compare-3pane.sh` | that same three-pane comparison via `dotpipe` |
 
-`run-scripts/storage/` holds the parked approved recipes
+`run-scripts-frei0r/storage/` holds the parked approved recipes
 (`dotgate_final`, `dotportal`, `vintagestack`, 4K/testshort variants) —
 they work, but their `-metal` companions and outputs are from the
 previous input set.
@@ -97,6 +99,25 @@ tools/fx.sh -i input.mov -o outputvideos/dotgate_final.mp4 \
 
 Bare numbers work positionally (`dotgate 28 8 10`); omitted params take
 the defaults below; words before the first stage pass through to ffmpeg.
+
+### dotpipe (raw-pipe host — no frei0r needed)
+
+`dotpipe/dotpipe` is a standalone effect engine: ffmpeg decodes/encodes,
+raw RGB24 frames pipe through the binary. Same cores — and the same
+Metal path (`RETROFX_BACKEND=cpu|metal|dual`) — so it works with **any**
+ffmpeg build, even one without the frei0r filter:
+
+```sh
+ffmpeg -hide_banner -loglevel error -i input.mov -f rawvideo -pix_fmt rgb24 - \
+  | RETROFX_BACKEND=metal ./dotpipe/dotpipe -w 1920 -h 1080 \
+      --spacengrave 5 85 80 68 200 78 360 100 5 \
+  | ffmpeg -hide_banner -loglevel error -f rawvideo -pix_fmt rgb24 -s 1920x1080 -i - out.mp4
+```
+
+No flags = byte-identical passthrough; `dual` cross-checks Metal vs CPU
+per frame and exits loud on mismatch. `run-scripts-dotpipe/model-gamma-spacengrave.sh`
+is the approved look end-to-end (a Metal CPU-fallback warning is a hard
+error there).
 
 ### Effect parameters (positional order, then defaults)
 
@@ -138,7 +159,7 @@ effects are CPU-only for now — see `plan/vid-update.md` Phase 2):
 | `dual` | runs both, byte-compares every frame; a MISMATCH means a parity regression (either output is still usable) |
 
 ```sh
-RETROFX_BACKEND=metal sh run-scripts/model-spacengrave-metal.sh
+RETROFX_BACKEND=metal sh run-scripts-frei0r/model-gamma-spacengrave-metal.sh
 ```
 
 Measured CPU-vs-Metal performance on the `inputvideos/` videos:

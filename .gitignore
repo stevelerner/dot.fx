@@ -11,6 +11,7 @@ archive/
 # compiled binaries (regenerable via Makefile)
 harness/harness
 harness/harness_asan
+dotpipe/dotpipe
 tools/f0r_host
 tools/checkmask
 tools/sprcmp

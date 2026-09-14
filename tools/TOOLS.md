@@ -75,19 +75,53 @@ directly on PPM input with per-effect flags:
     harness/harness --scanlines --mask --barrel --bloom --vignette \
         --overscan --bleed --lumar --rainbow --wow --dotgate --glitch --frame
 
-## run-scripts/ — approved-look render recipes (not test tools)
-Each `cd`s to the repo root, renders at 4K through the effect, scales to 720p;
-portal renders use `yuv444p`.
+## dotpipe/ — raw-pipe effect host (ffmpeg as codec only)
+`dotpipe/dotpipe` (gitignored; built by `make` / the Makefile rule).
+Reads raw RGB24 frames (`w*h*3` bytes) from stdin, applies the selected
+effects in harness/ order, writes to stdout, frame index auto-increments
+(time effects animate). Same cores as harness/ — plus `--dotportal` and
+`--spacengrave`, which the harness lacks — and the four Metal effects
+dispatch on `RETROFX_BACKEND=cpu|metal|dual` exactly like the frei0r
+adapter (dual runs both, byte-compares, returns the CPU result).
 
-- `vintagestack.sh` — the classic stack
-- `dotgate_final.sh`, `dotgate_720.sh` — approved dot.gate looks
-- `dotportal.sh` — `size|fill|gate|halftone|relief|level|glow|color` = `24|55|5|70|50|200|60|360`
-- `dotportal_coarse.sh` — `48|55|5|90|75|200|60|360`
-- `model-spacengrave.sh` — the approved dot.spacengrave engraved line
-  screen on model.mp4 (720×1280 native, size 5, gate 5, level 200, dim 100)
-- `testshort-spacengrave.sh` — same look at 4K (size 15) → 1080p
-- `model-dotportal-white.sh`, `model-3panel.sh` — model.mp4 portal render
-  + the 3-panel comparison compositor
+    # single raw frame
+    ./dotpipe/dotpipe -w 720 -h 1280 --dotgate 28 8 10 < in.raw > out.raw
+
+    # full clip (any ffmpeg, frei0r not required)
+    ffmpeg -i in.mp4 -f rawvideo -pix_fmt rgb24 - \
+      | RETROFX_BACKEND=metal ./dotpipe/dotpipe -w 1920 -h 1080 --spacengrave 5 85 80 68 200 78 360 100 5 \
+      | ffmpeg -f rawvideo -pix_fmt rgb24 -s 1920x1080 -i - out.mp4
+
+No effect flags = byte-identical passthrough.
+
+## run-scripts-frei0r/ + run-scripts-dotpipe/ — approved-look render recipes (not test tools)
+Each script `cd`s to the repo root and renders at the source's native
+geometry; spacengrave/3pane outputs use `yuv444p`, vintage `yuv420p`.
+All take `[-i input] [-o output]` (3pane also `[-w 720] [-h 1280]`).
+
+`run-scripts-frei0r/` — the recipes through the frei0r filter:
+
+- `model-vintage.sh` / `jimbots-vintage.sh` — the approved 9-effect `vid.*`
+  CRT/VHS stack at locked levels
+- `model-gamma-spacengrave-metal.sh` — the approved dot.spacengrave
+  engraved line screen (gamma shadow lift, 720×1280 native, size 5,
+  gate 5, level 200, dim 100)
+- `model-compare-3pane.sh` / `jimbots-compare-3pane.sh` — three-pane
+  hstacked comparison (original | vintage | gamma + spacengrave)
+- `storage/` — parked older recipes (`dotgate_*`, `dotportal_*`,
+  `vintagestack`, `model-3panel`, 4K/testshort variants)
+
+`run-scripts-dotpipe/` — the same looks through `dotpipe/` (raw-pipe
+host, no frei0r needed):
+
+- `model-vintage.sh` / `jimbots-vintage.sh` — the same 9-effect stack
+  (CPU core, no GPU needed)
+- `model-gamma-spacengrave.sh` / `jimbots-gamma-spacengrave.sh` — the
+  same approved look (Metal backend; a CPU-fallback warning is a hard
+  error)
+- `model-compare-3pane.sh` / `jimbots-compare-3pane.sh` — the same
+  three-pane comparison (each branch lands in a raw file, final
+  `hstack` encode)
 
 ## Verification assets
 - `examples/new/beforematrix.png` + `aftermatrix.jpg` — sample stills

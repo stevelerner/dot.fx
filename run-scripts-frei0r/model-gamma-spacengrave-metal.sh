@@ -34,13 +34,13 @@
 #     dim = 100     Photo removed to pure black under the ink.
 #     gate = 5      Subject gate knee (approved on this footage).
 #
-# (Full param docs: run-scripts/model-spacengrave.sh header.)
+# (Full param docs: run-scripts-dotpipe/model-gamma-spacengrave.sh.)
 #
 # Backend: METAL — and GENUINELY GPU: native 720×1280 is under the
 # 2048-row Metal bound (unlike the supersampled pair, which falls back
 # to CPU by design; output parity holds either way).
 #
-# Usage:  sh run-scripts/model-gamma-spacengrave-metal.sh [-i input] [-o output]
+# Usage:  sh run-scripts-frei0r/model-gamma-spacengrave-metal.sh [-i input] [-o output]
 #         (defaults: inputvideos/model.mp4 → outputvideos/model-gamma-spacengrave-metal.mp4)
 set -eu
 
@@ -52,7 +52,7 @@ while getopts "i:o:" opt; do
   case $opt in
     i) IN=$OPTARG ;;
     o) OUT=$OPTARG ;;
-    *) echo "usage: sh run-scripts/model-gamma-spacengrave-metal.sh [-i input] [-o output]" >&2
+    *) echo "usage: sh run-scripts-frei0r/model-gamma-spacengrave-metal.sh [-i input] [-o output]" >&2
        exit 2 ;;
   esac
 done

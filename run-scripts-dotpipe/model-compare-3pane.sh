@@ -36,25 +36,28 @@
 # stderr is treated as a hard error, so the RIGHT pane can never
 # silently be the CPU pass.
 #
-# Vintage chain params (core values; dial values in parentheses —
-# meaning: archive/frei0r/run-scripts/model-vintage.sh header):
-#   bloom 1.20 0.10 16 (60|0.10|16) · bleed 4 1.0 (chromablood 25) ·
-#   lumar 0.50 4 (25|4) · rainbow 0.80 48 16 (40|48|16) ·
-#   wow 8 90 (tapewow 8|90) · scanlines 0.65 3 0 (65|3|0) ·
-#   mask grille 0.048 3 (shadowmask 0|4|3) · vignette 0.70 (35) ·
-#   barrel 0.41 1.0 (35|100) · overscan 24 4 (24|4)
+# Vintage chain params (one line per effect, matching the pipeline):
+#   --bloom 1.20 0.10 16 \        soft glow on highlights; strength, threshold 0..1, radius px (dial 60|0.10|16)
+#   --bleed 4 1.0 \               RGB fringing on edges; radius px, amount (dial chromablood 25)
+#   --lumar 0.50 4 \              luma ringing around edges; amount, wavelength px (dial 25|4)
+#   --rainbow 0.80 48 16 \        dot-crawl rainbow phasing; amount, rows per beat, frames per beat (dial 40|48|16)
+#   --wow 8 90 \                  slow vertical drift; amplitude px, frames per cycle (dial tapewow 8|90)
+#   --scanlines 0.65 3 0 \        CRT dark rows; intensity, period rows, offset rows (dial 65|3|0)
+#   --mask grille 0.048 3 \       aperture-grille bars; type, intensity, pitch px (dial shadowmask 0|4|3)
+#   --vignette 0.70 \             corner darkening (dial 35)
+#   --barrel 0.41 1.0 \           CRT glass curve; amount, zoom (margin vanishes) (dial 35|100)
+#   --overscan 24 4 \             rounded corners + bezel crop; radius px, crop px (dial 24|4)
 #
-# Spacengrave params (size fill halftone line level grain color dim
-# gate):
-#   5    Scanline pitch px (native res; 0 = off).
-#   85   Stroke width % of pitch (the bold reference line).
-#   80   Tone-coupled ink shading (the engraved 3D read).
-#   68   Baseline line solidity (0-100).
-#   200  Ink brightness ×100 (2 = 2×, the approved gain).
-#   78   Texture break-up into dashes (the engraving knob).
-#   360  Ink colour (360 = pure white).
-#   100  Photo dimmed to pure black under the ink.
-#   5    Subject gate knee (approved on this footage).
+# Spacengrave params (in the order in the pipeline):
+#   --spacengrave 5 \            scanline pitch px (native res; 0 = off)
+#     85 \                       stroke width, % of pitch (the bold reference line)
+#     80 \                       tone-coupled ink shading (the engraved 3D read)
+#     68 \                       baseline line solidity (0-100)
+#     200 \                      ink brightness ×100 (2× = the approved gain)
+#     78 \                       texture break-up into dashes (the engraving knob)
+#     360 \                      ink colour (360 = pure white)
+#     100 \                      photo dimmed to pure black under the ink
+#     5 \                        subject gate knee (approved on this footage)
 #
 # Usage:  sh run-scripts-dotpipe/model-compare-3pane.sh [-i input] [-o output]
 #         [-w 720] [-h 1280]
@@ -100,9 +103,15 @@ ffmpeg -hide_banner -loglevel error -i "$IN" -fps_mode passthrough -vf "$CELL" \
 ffmpeg -hide_banner -loglevel error -i "$IN" -fps_mode passthrough \
   -f rawvideo -pix_fmt rgb24 - \
   | ./dotpipe/dotpipe -w "$NW" -h "$NH" --fps "$R" \
-      --bloom 1.20 0.10 16 --bleed 4 1.0 --lumar 0.50 4 \
-      --rainbow 0.80 48 16 --wow 8 90 --scanlines 0.65 3 0 \
-      --mask grille 0.048 3 --vignette 0.70 --barrel 0.41 1.0 \
+      --bloom 1.20 0.10 16 \
+      --bleed 4 1.0 \
+      --lumar 0.50 4 \
+      --rainbow 0.80 48 16 \
+      --wow 8 90 \
+      --scanlines 0.65 3 0 \
+      --mask grille 0.048 3 \
+      --vignette 0.70 \
+      --barrel 0.41 1.0 \
       --overscan 24 4 \
   | ffmpeg -hide_banner -loglevel error -f rawvideo -pix_fmt rgb24 \
       -s "${NW}x${NH}" -i - -vf "$CELL" \
@@ -112,7 +121,15 @@ ffmpeg -hide_banner -loglevel error -i "$IN" -fps_mode passthrough \
 ffmpeg -hide_banner -loglevel error -i "$IN" -fps_mode passthrough -vf "eq=gamma=1.5" \
   -f rawvideo -pix_fmt rgb24 - \
   | RETROFX_BACKEND=metal ./dotpipe/dotpipe -w "$NW" -h "$NH" --fps "$R" \
-      --spacengrave 5 85 80 68 200 78 360 100 5 2>> "$ERRLOG" \
+      --spacengrave 5 \
+      85 \
+      80 \
+      68 \
+      200 \
+      78 \
+      360 \
+      100 \
+      5 2>> "$ERRLOG" \
   | ffmpeg -hide_banner -loglevel error -f rawvideo -pix_fmt rgb24 \
       -s "${NW}x${NH}" -i - -vf "$CELL" \
       -f rawvideo -pix_fmt rgb24 "$TMP/right.raw"

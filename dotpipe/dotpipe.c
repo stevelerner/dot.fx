@@ -72,7 +72,7 @@ static double parse_fps(const char *s)
     return atof(s);
 }
 
-static int metal_warned = 0;
+static int metal_warned = 0;   /* one-time Metal fallback warning */
 
 /* True when s can be the start of a positional number. */
 static int next_is_num(const char *s)
@@ -102,10 +102,10 @@ static int opt_ints(int argc, char **argv, int *ip, int need, int max_extra,
     return k;
 }
 
-/* Backend dispatch for the Metal-enabled effects — mirrors
- * frei0r-adapter/retrofx.c exactly: RETROFX_BACKEND env, cpu (default) /
- * metal / dual. CPU is the reference; Metal is byte-identical by
- * construction; dual runs both, byte-compares, returns the CPU result.
+/* Backend dispatch for the Metal-enabled effects — mirrors the archived
+ * adapter (archive/frei0r/adapter/retrofx.c) exactly: RETROFX_BACKEND env,
+ * cpu (default) / metal / dual. CPU is the reference; Metal is byte-identical
+ * by construction; dual runs both, byte-compares, returns the CPU result.
  * Metal unavailability degrades to CPU with one warning. The casts are
  * safe: all four pairs share the (uint8_t*, int, int, int, const <p>*,
  * int) signature shape. */
@@ -190,29 +190,32 @@ int main(int argc, char **argv)
     enum { FX_SCANLINES, FX_MASK, FX_BLEED, FX_LUMAR, FX_BARREL, FX_BLOOM,
            FX_VIGNETTE, FX_OVERSCAN, FX_RAINBOW, FX_WOW, FX_DOTGATE,
            FX_DOTPORTAL, FX_SPACENGRAVE, FX_GLITCH, FX_MAX };
-    int order[FX_MAX];
+    int order[FX_MAX];   /* effects in the order given on the command line */
     int nsteps = 0;
 
-    float sl_intensity = 0.5f, sl_period = 3.0f, sl_offset = 0.0f;
-    crt_mask_type_t mask_type = CRT_MASK_GRILLE;
-    float mask_intensity = 0.5f, mask_pitch = 3.0f;
-    int   bleed_radius = 16;
-    float bleed_amount = 1.0f;
-    float lumar_amount = 1.0f, lumar_wavelength = 4.0f;
-    float barrel_amount = 0.15f, barrel_zoom = 0.0f;
-    float bloom_amount = 1.0f, bloom_threshold = 0.10f;
-    int   bloom_radius = 16;
-    float vignette_amount = 1.0f;
-    int   overscan_radius = 48, overscan_margin = 8;
-    float rainbow_amount = 1.0f, rainbow_py = 48.0f, rainbow_pt = 16.0f;
-    int   wow_amplitude = 4, wow_period = 90;
-    int   gate_size = 24, gate_speed = 6, gate_gate = 10;
-    int   p_size = 24, p_fill = 55, p_gate = 5, p_halftone = 70;
-    int   p_relief = 50, p_level = 200, p_glow = 60, p_color = 360;
-    int   s_size = 5, s_fill = 45, s_halftone = 60, s_line = 75;
-    int   s_level = 100, s_grain = 65, s_color = 360, s_dim = 100, s_gate = 30;
-    int   vg_amount = 30, vg_rgb = 4, vg_noise = 8, vg_bands = 45;
-    int   vg_blocks = 0, vg_scan = 0, vg_quant = 0, vg_vtear = 28, vg_seed = 3;
+    /* Effect parameters — defaults are the adapter defaults in core values
+     * (dial meaning: README.md *Effect parameters*); each --flag below
+     * overwrites the fields it names. */
+    float sl_intensity = 0.5f, sl_period = 3.0f, sl_offset = 0.0f;  /* scanlines: strength, rows per period, row offset */
+    crt_mask_type_t mask_type = CRT_MASK_GRILLE;                    /* mask: grille|slot|triad */
+    float mask_intensity = 0.5f, mask_pitch = 3.0f;                 /* mask: strength, pitch px */
+    int   bleed_radius = 16;                                        /* chromablood: fringe radius px */
+    float bleed_amount = 1.0f;                                      /* chromablood: strength */
+    float lumar_amount = 1.0f, lumar_wavelength = 4.0f;             /* luma ring: strength, wavelength px */
+    float barrel_amount = 0.15f, barrel_zoom = 0.0f;                /* barrel: curve strength, zoom (margin fill) */
+    float bloom_amount = 1.0f, bloom_threshold = 0.10f;             /* bloom: strength, luma gate 0..1 */
+    int   bloom_radius = 16;                                        /* bloom: glow radius px */
+    float vignette_amount = 1.0f;                                   /* vignette: corner falloff strength */
+    int   overscan_radius = 48, overscan_margin = 8;                /* overscan: corner radius px, bezel crop px */
+    float rainbow_amount = 1.0f, rainbow_py = 48.0f, rainbow_pt = 16.0f; /* dot crawl: strength, rows/beat, frames/beat */
+    int   wow_amplitude = 4, wow_period = 90;                       /* tapewow: drift px, frames/cycle (24 Hz clock) */
+    int   gate_size = 24, gate_speed = 6, gate_gate = 10;           /* dot.gate: dot pitch px, wobble px, subject knee ×100 */
+    int   p_size = 24, p_fill = 55, p_gate = 5, p_halftone = 70;    /* dot.portal: pitch px, radius % of step, gate ×100, tone tracking */
+    int   p_relief = 50, p_level = 200, p_glow = 60, p_color = 360; /* dot.portal: relief % of step, brightness ×100, aura, hue (360 = white) */
+    int   s_size = 5, s_fill = 45, s_halftone = 60, s_line = 75;    /* spacengrave: pitch px, stroke % of pitch, ink shading, baseline solidity */
+    int   s_level = 100, s_grain = 65, s_color = 360, s_dim = 100, s_gate = 30; /* brightness ×100, dash break-up, hue, photo dimming, gate ×100 */
+    int   vg_amount = 30, vg_rgb = 4, vg_noise = 8, vg_bands = 45;  /* glitch: burst frequency, RGB split, static, slice tears */
+    int   vg_blocks = 0, vg_scan = 0, vg_quant = 0, vg_vtear = 28, vg_seed = 3; /* glitch: tiles, scan jitter, posterize, v-sync tear, seed */
 
     int i = 1;
     while (i < argc) {
@@ -368,15 +371,21 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* One frame of RGB24 — w*h*3 bytes in, w*h*3 bytes out, per iteration. */
     size_t nbytes = (size_t)w * (size_t)h * 3;
     uint8_t *px = malloc(nbytes);
     if (!px)
         die("out of memory");
 
+    /* Raw pipes from ffmpeg are throughput-sensitive: 1 MiB stdio buffers
+     * keep the process from stalling the pipe on every syscall. */
     static char ibuf[1 << 20], obuf[1 << 20];
     setvbuf(stdin, ibuf, _IOFBF, sizeof ibuf);
     setvbuf(stdout, obuf, _IOFBF, sizeof obuf);
 
+    /* Frame loop: read one raw frame, run it through the effect chain in
+     * CLI order (switch below), write it out. Frame index drives the time
+     * effects; a short read at EOF ends the stream. */
     for (int frame = 0; ; frame++) {
         if (fread(px, 1, nbytes, stdin) != nbytes) {
             if (feof(stdin))

@@ -135,7 +135,7 @@ static const char *kMSL =
 "}\n"
 "struct Sprite { float x, y, r; float cr, cg, cb; float env; float shx, shy; float valid; };\n"
 "struct HoloP { int size; int speed; int gate; int split; int bright; int w; int h; int stride; int frame; };\n"
-"struct PortP { int size; int fill; int gate; int halftone; int relief; int level; int color; int glow; int split; int bright; int w; int h; int stride; };\n"
+"struct PortP { int size; int fill; int gate; int halftone; int relief; int level; int color; int color2; int crisp; int glow; int split; int bright; int w; int h; int stride; };\n"
 "struct GridP { int w; int h; int n; };\n"
 "struct CompP { int npix; };\n"
 "\n"
@@ -253,6 +253,15 @@ static const char *kMSL =
 "    float rf = fma(hs, luma, 1.0f - hs);\n"
 "    if (rf < 0.05f) rf = 0.05f;\n"
 "    if (rf > 1.0f) rf = 1.0f;\n"
+"    if (p.crisp > 0) {\n"
+"    /* crisp (2.3) — mirror of portal_cell: high local contrast shrinks\n"
+"     * the dot; same edge normalization as the gate idiom. */\n"
+"    float crisp01 = fma((float)p.crisp, 0.01f, 0.0f);\n"
+"    float e01 = edge * 4.0f;\n"
+"    if (e01 > 1.0f) e01 = 1.0f;\n"
+"    float k = fma(crisp01, e01, 0.0f);\n"
+"    rf = fma(k, -rf, rf);\n"
+"    }\n"
 "    /* separation: radius as a fraction of the grid step. */\n"
 "    float fill01 = fma((float)p.fill, 0.01f, 0.0f);\n"
 "    float rbase = fma(fill01, (float)step, 0.0f);\n"
@@ -291,7 +300,6 @@ static const char *kMSL =
 "    int hi = (int)h6;\n"
 "    if (hi > 5) hi = 5;\n"
 "    float fr = fma(h6, 1.0f, -(float)hi);\n"
-"    float hr, hg, hb;\n"
 "    if (hi == 0)      { hr = 1.0f; hg = fr;   hb = 0.0f; }\n"
 "    else if (hi == 1) { hr = 1.0f; hg = 1.0f; hb = fr; }\n"
 "    else if (hi == 2) { hr = 0.0f; hg = 1.0f; hb = fr; }\n"
@@ -302,6 +310,37 @@ static const char *kMSL =
 "    float wr = fma(hr, 0.60f, 1.0f - 0.60f);\n"
 "    float wg = fma(hg, 0.60f, 1.0f - 0.60f);\n"
 "    float wb = fma(hb, 0.60f, 1.0f - 0.60f);\n"
+"    if (p.color2 != p.color) {\n"
+"    /* duotone (2.1) — mirror of portal_ramp's blend: t from shade\n"
+"     * (local_shade clamps 0.55..1.45): 0 at the shadow end, 1 at the\n"
+"     * lit end; fma-pinned exactly as the CPU's fmaf form. */\n"
+"    float hr2, hg2, hb2;\n"
+"    if (p.color2 >= 360) { hr2 = 1.0f; hg2 = 1.0f; hb2 = 1.0f; }\n"
+"    else {\n"
+"    float hue2 = (float)p.color2;\n"
+"    if (hue2 < 0.0f) hue2 = 0.0f;\n"
+"    float h62 = fma(hue2, 1.0f / 60.0f, 0.0f);\n"
+"    int hi2 = (int)h62;\n"
+"    if (hi2 > 5) hi2 = 5;\n"
+"    float fr2 = fma(h62, 1.0f, -(float)hi2);\n"
+"    if (hi2 == 0)      { hr2 = 1.0f; hg2 = fr2;  hb2 = 0.0f; }\n"
+"    else if (hi2 == 1) { hr2 = 1.0f; hg2 = 1.0f; hb2 = fr2; }\n"
+"    else if (hi2 == 2) { hr2 = 0.0f; hg2 = 1.0f; hb2 = fr2; }\n"
+"    else if (hi2 == 3) { hr2 = 0.0f; hg2 = fr2;  hb2 = 1.0f; }\n"
+"    else if (hi2 == 4) { hr2 = fr2;  hg2 = 0.0f; hb2 = 1.0f; }\n"
+"    else               { hr2 = 1.0f; hg2 = 0.0f; hb2 = fr2; }\n"
+"    }\n"
+"    float wr2 = fma(hr2, 0.60f, 1.0f - 0.60f);\n"
+"    float wg2 = fma(hg2, 0.60f, 1.0f - 0.60f);\n"
+"    float wb2 = fma(hb2, 0.60f, 1.0f - 0.60f);\n"
+"    float inv = 1.0f / 0.9f;\n"
+"    float t = fma(shade, inv, -0.55f * inv);\n"
+"    if (t < 0.0f) t = 0.0f;\n"
+"    if (t > 1.0f) t = 1.0f;\n"
+"    wr = fma(t, wr2 - wr, wr);\n"
+"    wg = fma(t, wg2 - wg, wg);\n"
+"    wb = fma(t, wb2 - wb, wb);\n"
+"    }\n"
 "    float pr = fma(g, wr, 0.0f);\n"
 "    float pg = fma(g, wg, 0.0f);\n"
 "    float pb = fma(g, wb, 0.0f);\n"
@@ -485,14 +524,16 @@ static const char *kMSL =
 " * per-pixel kernel over (w, h) is the whole effect: dimmed pass-through,\n"
 " * or dimmed base + additive ink. Reads the src snapshot, writes dst —\n"
 " * never read-modify-write one buffer (self-feedback pitfall, dot.c §5.1). */\n"
-"struct RowTri { int y; float tri; };\n"
+"struct RowTri { int y; float tri; float tri2; };\n"
 "struct SEState {\n"
 "    int w, h, stride;\n"
 "    int pitch, probe;\n"
 "    float halfw, inv_pitch;\n"
-"    float wr, wg, wb, lv, bias, grain01, half01;\n"
+"    float wr, wg, wb, lv, bias, grain01, half01, tex01;\n"
 "    float keep, T, knee;\n"
 "    int bright, gate_on;\n"
+"    int pitch2;                       /* contour (2.4) */\n"
+"    float c01, inv_pitch2, halfw2;\n"
 "    RowTri rows[2048];\n"
 "};\n"
 "kernel void spacengrave(device const uint8_t *src [[buffer(0)]],\n"
@@ -509,12 +550,46 @@ static const char *kMSL =
 "    float br = (float)src[i3 + 0] * p.keep + 0.5f;\n"
 "    float bg = (float)src[i3 + 1] * p.keep + 0.5f;\n"
 "    float bb = (float)src[i3 + 2] * p.keep + 0.5f;\n"
-"    float tri = p.rows[y].tri;\n"
+"    /* luma + local gradient first: the contour path (2.4) needs shx/shy\n"
+"     * to tilt the stroke axis, so both branches get them here. Pure reads,\n"
+"     * independent of the table lookup below. */\n"
+"    float l0 = luma_at(src, p.stride, p.w, p.h, x, y);\n"
+"    float shx, shy, edge;\n"
+"    local_shade(src, p.stride, p.w, p.h, x, y, p.probe, l0, shx, shy, edge);\n"
+"    float tri, tri2;\n"
+"    if (p.c01 == 0.0f) {\n"
+"        tri = p.rows[y].tri;\n"
+"        tri2 = p.rows[y].tri2;\n"
+"    } else {\n"
+"        /* contour (2.4) — mirror of core/dot.c: the phase coordinate u\n"
+"         * blends the row (y) toward the gradient-perpendicular coordinate;\n"
+"         * flat (n == 0) keeps the axis vertical. fx_div/crsqrt are the\n"
+"         * correctly-rounded / and sqrt (the GPU's own are not). */\n"
+"        float fy = (float)y;\n"
+"        float u = fy;\n"
+"        float n = crsqrt(fma(shx, shx, fma(shy, shy, 0.0f)));\n"
+"        if (n > 0.0f) {\n"
+"            float u_c = fma(fx_div(shx, n), fy,\n"
+"                           fma(-fx_div(shy, n), (float)x, 0.0f));\n"
+"            u = fma(p.c01, u_c - fy, fy);\n"
+"        }\n"
+"        float phase = fmod(u, (float)p.pitch);\n"
+"        if (phase < 0.0f) phase += (float)p.pitch;\n"
+"        phase *= p.inv_pitch;\n"
+"        float d = fabs(phase - 0.25f);\n"
+"        tri = (d >= p.halfw) ? 0.0f : (1.0f - fx_div(d, p.halfw));\n"
+"        tri2 = 0.0f;\n"
+"        if (p.tex01 > 0.0f) {\n"
+"            float phase2 = fmod(u, (float)p.pitch2);\n"
+"            if (phase2 < 0.0f) phase2 += (float)p.pitch2;\n"
+"            phase2 *= p.inv_pitch2;\n"
+"            float d2 = fabs(phase2 - 0.25f);\n"
+"            tri2 = (d2 >= p.halfw2) ? 0.0f : (1.0f - fx_div(d2, p.halfw2));\n"
+"        }\n"
+"    }\n"
 "    int ar = 0, ag = 0, ab = 0;\n"
-"    if (tri > 0.0f) {\n"
-"        float l0 = luma_at(src, p.stride, p.w, p.h, x, y);\n"
-"        float shx, shy, edge;\n"
-"        local_shade(src, p.stride, p.w, p.h, x, y, p.probe, l0, shx, shy, edge);\n"
+"    int br2 = 0, bg2 = 0, bb2 = 0;\n"
+"    if (tri > 0.0f || tri2 > 0.0f) {\n"
 "        float e = edge * 4.0f;\n"
 "        if (e > 1.0f) e = 1.0f; /* 0..1 local contrast */\n"
 "        int pass = 1;\n"
@@ -540,9 +615,28 @@ static const char *kMSL =
 "                if (ag < 0) ag = 0;\n"
 "                if (ab < 0) ab = 0;\n"
 "            }\n"
+"            /* second layer (2.2) — mirror of dot.c: own dither seed,\n"
+"             * own baseline coverage (`texture`%), same response model. */\n"
+"            if (p.tex01 > 0.0f && tri2 > 0.0f) {\n"
+"            float cov2 = p.tex01\n"
+"                       - p.grain01 * (e - 0.5f)\n"
+"                       + p.half01 * (l0 - 0.5f);\n"
+"            if (cov2 < 0.0f) cov2 = 0.0f;\n"
+"            if (cov2 > 1.0f) cov2 = 1.0f;\n"
+"            float t2 = fx_rand01(1u, 0u, (uint)x, (uint)y);\n"
+"            if (cov2 >= t2) {\n"
+"                float ink2 = 255.0f * tri2 * p.lv * (0.15f + 0.85f * l0);\n"
+"                br2 = (int)(ink2 * p.wr + (ink2 * p.wr >= 0.0f ? 0.5f : -0.5f));\n"
+"                bg2 = (int)(ink2 * p.wg + (ink2 * p.wg >= 0.0f ? 0.5f : -0.5f));\n"
+"                bb2 = (int)(ink2 * p.wb + (ink2 * p.wb >= 0.0f ? 0.5f : -0.5f));\n"
+"                if (br2 < 0) br2 = 0;\n"
+"                if (bg2 < 0) bg2 = 0;\n"
+"                if (bb2 < 0) bb2 = 0;\n"
+"            }\n"
+"            }\n"
 "        }\n"
 "    }\n"
-"    if (ar <= 0 && ag <= 0 && ab <= 0) { /* dashed off / off-stroke */\n"
+"    if (ar <= 0 && ag <= 0 && ab <= 0 && br2 <= 0 && bg2 <= 0 && bb2 <= 0) { /* both layers dashed off / off-stroke */\n"
 "        dst[i3]     = (uint8_t)br;\n"
 "        dst[i3 + 1] = (uint8_t)bg;\n"
 "        dst[i3 + 2] = (uint8_t)bb;\n"
@@ -550,9 +644,9 @@ static const char *kMSL =
 "    }\n"
 "    /* frame already globally dimmed (keep) — add the ink, clip at 255 */\n"
 "    int v;\n"
-"    v = (int)br + ar; dst[i3]     = (uint8_t)(v > 255 ? 255 : v);\n"
-"    v = (int)bg + ag; dst[i3 + 1] = (uint8_t)(v > 255 ? 255 : v);\n"
-"    v = (int)bb + ab; dst[i3 + 2] = (uint8_t)(v > 255 ? 255 : v);\n"
+"    v = (int)br + ar + br2; dst[i3]     = (uint8_t)(v > 255 ? 255 : v);\n"
+"    v = (int)bg + ag + bg2; dst[i3 + 1] = (uint8_t)(v > 255 ? 255 : v);\n"
+"    v = (int)bb + ab + bb2; dst[i3 + 2] = (uint8_t)(v > 255 ? 255 : v);\n"
 "}\n";
 
 typedef struct {
@@ -620,7 +714,7 @@ static void ensure_buffers(int w, int h, int stride, int nspr)
 
 /* Structs must match the MSL definitions exactly. */
 typedef struct { int size, speed, gate, split, bright, w, h, stride, frame; } HoloP;
-typedef struct { int size, fill, gate, halftone, relief, level, color, glow, split, bright, w, h, stride; } PortP;
+typedef struct { int size, fill, gate, halftone, relief, level, color, color2, crisp, glow, split, bright, w, h, stride; } PortP;
 typedef struct { int w, h, n; } GridP;
 typedef struct { int npix; } CompP;
 
@@ -943,6 +1037,8 @@ int metal_dotportal(uint8_t *rgb, int width, int height, int stride,
     mp.relief = p->relief;
     mp.level = p->level;
     mp.color = p->color;
+    mp.color2 = p->color2;
+    mp.crisp = p->crisp;
     mp.glow = p->glow;
     /* Subject region — same host-side split as dotportal(). */
     int subj_bright = 0;
@@ -1167,14 +1263,16 @@ int metal_vid_glitch(uint8_t *rgb, int width, int height, int stride,
 /* ---- dot.spacengrave ---------------------------------------------------- */
 
 /* Structs must match the MSL definitions exactly (SEState/RowTri). */
-typedef struct { int y; float tri; } se_row_t;
+typedef struct { int y; float tri; float tri2; } se_row_t;
 typedef struct {
     int w, h, stride;
     int pitch, probe;
     float halfw, inv_pitch;
-    float wr, wg, wb, lv, bias, grain01, half01;
+    float wr, wg, wb, lv, bias, grain01, half01, tex01;
     float keep, T, knee;
     int bright, gate_on;
+    int pitch2;             /* contour (2.4) */
+    float c01, inv_pitch2, halfw2;
     se_row_t rows[2048];
 } SEState;
 
@@ -1188,12 +1286,14 @@ int metal_spacengrave(uint8_t *rgb, int width, int height, int stride,
      * degrades to the CPU core, so the guards must agree). */
     if (p->fill < 0 || p->halftone < 0 || p->line < 0 ||
         p->level < 0 || p->grain < 0 || p->color < 0 ||
-        p->dim < 0 || p->gate < 0)
+        p->dim < 0 || p->gate < 0 || p->texture < 0 ||
+        p->contour < 0)
         return 0; /* invalid params: leave the frame untouched */
     if (p->size < 2)
         return 0; /* 0 = off (identity); 1 = sub-pixel pitch, no sensible ink */
-    if (height > 2048)
-        return -1; /* the MSL per-row table is bounded (rows[2048]) */
+    if (p->contour <= 0 && height > 2048)
+        return -1; /* contour-0 reads the bounded per-row table; contour > 0
+                    computes per-pixel in the kernel and never does */
     (void)frame; /* reserved: the field is time-invariant */
 
     int pitch = p->size;
@@ -1224,6 +1324,13 @@ int metal_spacengrave(uint8_t *rgb, int width, int height, int stride,
     float half01 = (float)p->halftone * 0.01f; /* 0..1 */
     float keep = 1.0f - (float)p->dim * 0.01f; /* 1 = photo, 0 = black */
 
+    /* second dash layer (2.2) — same per-row expressions as dot_spacengrave() */
+    float tex01 = (float)p->texture * 0.01f;
+    int pitch2 = pitch / 2;
+    if (pitch2 < 2) pitch2 = 2;
+    float half2 = half * 0.5f;
+    float inv_pitch2 = 1.0f / (float)pitch2;
+
     SEState s;
     memset(&s, 0, sizeof s);
     s.w = width; s.h = height; s.stride = stride;
@@ -1233,17 +1340,31 @@ int metal_spacengrave(uint8_t *rgb, int width, int height, int stride,
     s.inv_pitch = inv_pitch;
     s.wr = wr; s.wg = wg; s.wb = wb;
     s.lv = lv; s.bias = bias; s.grain01 = grain01; s.half01 = half01;
+    s.tex01 = tex01;
     s.keep = keep; s.T = T; s.knee = knee;
     s.bright = bright;
     s.gate_on = gate_on;
+    s.pitch2 = pitch2;
+    s.c01 = (float)p->contour * 0.01f; /* 0 = off: kernel uses the table */
+    s.inv_pitch2 = inv_pitch2;
+    s.halfw2 = half2;
 
-    /* per-row stroke envelope — mirrors dot_spacengrave() expression-for-
-     * expression (same compiler, so the roundings agree). */
-    for (int y = 0; y < height; y++) {
-        float phase = (float)(y % pitch) * inv_pitch;
-        float d = fabsf(phase - 0.25f);
-        s.rows[y].y = y;
-        s.rows[y].tri = (d >= half) ? 0.0f : (1.0f - d / half);
+    /* per-row stroke envelope — read only by the contour-0 path (contour
+     * > 0 computes per-pixel in the kernel). Mirrors dot_spacengrave()
+     * expression-for-expression (same compiler, so the roundings agree). */
+    if (p->contour <= 0) {
+        for (int y = 0; y < height; y++) {
+            float phase = (float)(y % pitch) * inv_pitch;
+            float d = fabsf(phase - 0.25f);
+            s.rows[y].y = y;
+            s.rows[y].tri = (d >= half) ? 0.0f : (1.0f - d / half);
+            s.rows[y].tri2 = 0.0f;
+            if (tex01 > 0.0f) {
+                float phase2 = (float)(y % pitch2) * inv_pitch2;
+                float d2 = fabsf(phase2 - 0.25f);
+                s.rows[y].tri2 = (d2 >= half2) ? 0.0f : (1.0f - d2 / half2);
+            }
+        }
     }
 
     return metal_render_vid(ctx.pipe_se, width, height, stride, rgb, &s, sizeof s);
@@ -1370,6 +1491,8 @@ int metal_dotportal_sprdump(const uint8_t *rgb, int width, int height, int strid
     mp.relief = p->relief;
     mp.level = p->level;
     mp.color = p->color;
+    mp.color2 = p->color2;
+    mp.crisp = p->crisp;
     mp.glow = p->glow;
     /* Subject region — same host-side split as dotportal(). */
     int subj_bright = 0;

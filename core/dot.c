@@ -17,9 +17,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <dispatch/dispatch.h>
+
 #include "dot.h"
 #include "fx_hash.h"
 #include "fx_math.h"
+#include "fx_scratch.h"
 
 /* Fixed internal seed, like the other effects: the pattern identity is not
  * a user parameter (keeps the host param surface consistent); it only
@@ -182,16 +185,37 @@ static void fx_emit(const sprite_t *spr, int n,
     }
 }
 
-/* Luma of a pixel with clamped coordinates (neighbour probing at the edges). */
-static float luma_at(const uint8_t *pixels, int width, int height, int stride,
+/* Per-frame luma plane (width*height floats, row-major): each pixel's
+ * luma computed exactly once with the same formula and operation order
+ * luma_at() used, so local_shade()'s probes (8 per cell, and per-pixel
+ * in dot_spacengrave) load a cached value instead of recomputing.
+ * Values are bit-identical to the per-call computation. */
+static float *dot_luma_plane(const uint8_t *pixels, int width, int height,
+                             int stride)
+{
+    float *plane = (float *)fx_scratch(2, (size_t)width * (size_t)height * sizeof *plane);
+    if (!plane)
+        return NULL;
+    for (int y = 0; y < height; y++) {
+        float *dp = plane + (size_t)y * (size_t)width;
+        for (int x = 0; x < width; x++) {
+            const uint8_t *q = pixels + (size_t)y * (size_t)stride + (size_t)x * 3;
+            dp[x] = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
+        }
+    }
+    return plane;
+}
+
+/* Luma of a pixel with clamped coordinates (neighbour probing at the
+ * edges), read from the per-frame luma plane. */
+static float luma_at(const float *plane, int width, int height,
                      int x, int y)
 {
     if (x < 0) x = 0;
     if (x >= width) x = width - 1;
     if (y < 0) y = 0;
     if (y >= height) y = height - 1;
-    const uint8_t *q = pixels + (size_t)y * (size_t)stride + (size_t)x * 3;
-    return (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
+    return plane[(size_t)y * (size_t)width + (size_t)x];
 }
 
 /* Local-shade probe ("depth" for the particle field, v5): from the luma
@@ -207,15 +231,15 @@ static float luma_at(const uint8_t *pixels, int width, int height, int stride,
  *            mode's subject gate (texture/edges localize the dots on the
  *            subject; flat backgrounds stay black).
  * Local reads only; closed form; deterministic. */
-static void local_shade(const uint8_t *pixels, int width, int height,
-                        int stride, int sx, int sy, int step, float l0,
+static void local_shade(const float *plane, int width, int height,
+                        int sx, int sy, int step, float l0,
                         float *out_shade, float *out_shx, float *out_shy,
                         float *out_edge)
 {
-    float le = luma_at(pixels, width, height, stride, sx + step, sy);
-    float lw = luma_at(pixels, width, height, stride, sx - step, sy);
-    float ls = luma_at(pixels, width, height, stride, sx, sy + step);
-    float ln = luma_at(pixels, width, height, stride, sx, sy - step);
+    float le = luma_at(plane, width, height, sx + step, sy);
+    float lw = luma_at(plane, width, height, sx - step, sy);
+    float ls = luma_at(plane, width, height, sx, sy + step);
+    float ln = luma_at(plane, width, height, sx, sy - step);
 
     float gx = le - lw;
     float gy = ls - ln;
@@ -224,10 +248,10 @@ static void local_shade(const uint8_t *pixels, int width, int height,
     /* matrix subject gate: a wide probe too — a subject is textured at
      * several scales (its features within face distance of every point of
      * it), while a flat background is smooth at every scale. */
-    float le2 = luma_at(pixels, width, height, stride, sx + 3 * step, sy);
-    float lw2 = luma_at(pixels, width, height, stride, sx - 3 * step, sy);
-    float ls2 = luma_at(pixels, width, height, stride, sx, sy + 3 * step);
-    float ln2 = luma_at(pixels, width, height, stride, sx, sy - 3 * step);
+    float le2 = luma_at(plane, width, height, sx + 3 * step, sy);
+    float lw2 = luma_at(plane, width, height, sx - 3 * step, sy);
+    float ls2 = luma_at(plane, width, height, sx, sy + 3 * step);
+    float ln2 = luma_at(plane, width, height, sx, sy - 3 * step);
 
     float gx2 = le2 - lw2;
     float gy2 = ls2 - ln2;
@@ -296,7 +320,7 @@ static void gate_ramp(float shade, float luma, float edge, float knee,
 
 /* Per-cell dotgate sprite. Shared by dotgate() and the debug sprdump —
  * the MSL mirror is gather_gate in metal_fx.m (lockstep). */
-static int gate_cell(const uint8_t *pixels, int width, int height, int stride,
+static int gate_cell(const float *plane, int width, int height,
                      int sx, int sy, int step, float luma,
                      const dotgate_params_t *params,
                      int split, int bright,
@@ -311,7 +335,7 @@ static int gate_cell(const uint8_t *pixels, int width, int height, int stride,
     uint32_t id = (uint32_t)sy * 8192u + (uint32_t)sx;
 
     float shade, shx, shy, edge;
-    local_shade(pixels, width, height, stride, sx, sy, step, luma,
+    local_shade(plane, width, height, sx, sy, step, luma,
                 &shade, &shx, &shy, &edge);
 
     float env = shade; /* per-cell twinkle flattened; shade clamped 0.55..1.45 */
@@ -334,7 +358,7 @@ static int gate_cell(const uint8_t *pixels, int width, int height, int stride,
     int fcy = (int)s->y;
     int subject = 0;
     if (fcx >= 0 && fcy >= 0 && fcx < width && fcy < height) {
-        float lc = luma_at(pixels, width, height, stride, fcx, fcy);
+        float lc = luma_at(plane, width, height, fcx, fcy);
         subject = bright ? (lc > T) : (lc < T);
     }
     gate_ramp(shade, luma, edge, knee, subject, &s->cr, &s->cg, &s->cb);
@@ -362,30 +386,58 @@ void dotgate(uint8_t *pixels, int width, int height, int stride,
     int step = params->size / 2;
     if (step < 2) step = 2;
 
+    const float *plane = dot_luma_plane(pixels, width, height, stride);
+    if (!plane)
+        return; /* cannot allocate; leave buffer untouched */
+
     int cols = (width + step - 1) / step;
     int rows = (height + step - 1) / step;
-    sprite_t *spr = malloc((size_t)cols * (size_t)rows * sizeof(sprite_t));
+    sprite_t *spr = (sprite_t *)fx_scratch(0, (size_t)cols * (size_t)rows * sizeof(sprite_t));
     if (!spr)
         return; /* nothing written yet — frame untouched */
-    int n = 0;
-
-    /* 1) gather from the ORIGINAL pixels. */
-    for (int sy = step / 2; sy < height; sy += step) {
-        const uint8_t *row = pixels + (size_t)sy * (size_t)stride;
-        for (int sx = step / 2; sx < width; sx += step) {
-            const uint8_t *q = row + (size_t)sx * 3;
-            float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
-            sprite_t s;
-            if (gate_cell(pixels, width, height, stride, sx, sy, step, luma,
-                          params, split, bright, frame, &s))
-                spr[n++] = s;
+    /* 1) gather from the ORIGINAL pixels. Each cell's sprite is a pure
+     * function of its own (sx, sy) plus read-only inputs (gate_cell
+     * always returns 1), so rows are independent and parallelize over
+     * dispatch_apply; each cell writes a precomputed slot (row * cols_a +
+     * col) — the exact row-major order of the old running counter, so
+     * fx_emit() sees the identical array. (Per-cell work is sub-microsecond,
+     * so parallelize over rows, not cells — per-cell items were slower.) */
+    int cols_a = (step / 2 < width) ? (width - 1 - step / 2) / step + 1 : 0;
+    int rows_a = (step / 2 < height) ? (height - 1 - step / 2) / step + 1 : 0;
+    int n = rows_a * cols_a;
+    if (rows_a > 1) {
+        dispatch_apply(rows_a, DISPATCH_APPLY_AUTO, ^(size_t k) {
+            int sy = step / 2 + (int)k * step;
+            const uint8_t *row = pixels + (size_t)sy * (size_t)stride;
+            for (int j = 0; j < cols_a; j++) {
+                int sx = step / 2 + j * step;
+                const uint8_t *q = row + (size_t)sx * 3;
+                float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
+                sprite_t s;
+                gate_cell(plane, width, height, sx, sy, step, luma,
+                          params, split, bright, frame, &s);
+                spr[k * cols_a + j] = s;
+            }
+        });
+    } else {
+        for (int k = 0; k < rows_a; k++) {
+            int sy = step / 2 + k * step;
+            const uint8_t *row = pixels + (size_t)sy * (size_t)stride;
+            for (int j = 0; j < cols_a; j++) {
+                int sx = step / 2 + j * step;
+                const uint8_t *q = row + (size_t)sx * 3;
+                float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
+                sprite_t s;
+                gate_cell(plane, width, height, sx, sy, step, luma,
+                          params, split, bright, frame, &s);
+                spr[k * cols_a + j] = s;
+            }
         }
     }
 
     /* 2) remove the base (black behind the dots), 3) emit the field. */
     fx_dim(pixels, width, height, stride, 0.0f);
     fx_emit(spr, n, pixels, width, height, stride);
-    free(spr);
 }
 
 /* Debug (dual hunt): per-cell gather in tid order, 10 floats per cell
@@ -410,6 +462,9 @@ void dotgate_sprdump(const uint8_t *pixels, int width, int height, int stride,
     if (step < 2) step = 2;
     int cols = (width + step - 1) / step;
     int rows = (height + step - 1) / step;
+    const float *plane = dot_luma_plane(pixels, width, height, stride);
+    if (!plane)
+        return; /* out untouched */
     for (int tid = 0; tid < cols * rows; tid++) {
         float *o = out + (size_t)tid * 10;
         int sy = step / 2 + (tid % rows) * step;
@@ -417,7 +472,7 @@ void dotgate_sprdump(const uint8_t *pixels, int width, int height, int stride,
         const uint8_t *q = pixels + (size_t)sy * (size_t)stride + (size_t)sx * 3;
         float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
         sprite_t s;
-        if (gate_cell(pixels, width, height, stride, sx, sy, step, luma,
+        if (gate_cell(plane, width, height, sx, sy, step, luma,
                       params, split, bright, frame, &s)) {
             o[0] = s.x; o[1] = s.y; o[2] = s.r;
             o[3] = s.cr; o[4] = s.cg; o[5] = s.cb;
@@ -549,7 +604,7 @@ void portal_hue(float hue, float *r1, float *g1, float *b1)
  * wanted bright red/green/blue; white is unaffected: all its weights
  * are 1, so wr = wg = wb = 1 at any saturation). */
 static void portal_ramp(float shade, float luma, float edge, float knee,
-                        int hue, int subject,
+                        int hue, int hue2, int subject,
                         float *cr, float *cg, float *cb)
 {
     float pf = (edge >= knee && subject) ? 1.0f : 0.0f;
@@ -557,9 +612,31 @@ static void portal_ramp(float shade, float luma, float edge, float knee,
     float r1, g1, b1;
     portal_hue((float)hue, &r1, &g1, &b1);
     const float sat = 0.60f;
-    float pr = fmaf(g, fmaf(r1, sat, 1.0f - sat), 0.0f);
-    float pg = fmaf(g, fmaf(g1, sat, 1.0f - sat), 0.0f);
-    float pb = fmaf(g, fmaf(b1, sat, 1.0f - sat), 0.0f);
+    float wr = fmaf(r1, sat, 1.0f - sat);
+    float wg = fmaf(g1, sat, 1.0f - sat);
+    float wb = fmaf(b1, sat, 1.0f - sat);
+    if (hue2 != hue) {
+        /* Duotone: pull the hue weights toward the highlight hue by the
+         * dot's shade (local_shade clamps it to 0.55..1.45), so t = 0 at
+         * the shadow end (full `hue`), 1 at the lit end (full `hue2`).
+         * hue2 == hue takes the untouched path above — bit-identical to
+         * the flat-hue ramp. fma-pinned, MSL mirror in gather_portal. */
+        float r2, g2, b2;
+        portal_hue((float)hue2, &r2, &g2, &b2);
+        float wr2 = fmaf(r2, sat, 1.0f - sat);
+        float wg2 = fmaf(g2, sat, 1.0f - sat);
+        float wb2 = fmaf(b2, sat, 1.0f - sat);
+        const float inv = 1.0f / 0.9f;
+        float t = fmaf(shade, inv, -0.55f * inv);
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        wr = fmaf(t, wr2 - wr, wr);
+        wg = fmaf(t, wg2 - wg, wg);
+        wb = fmaf(t, wb2 - wb, wb);
+    }
+    float pr = fmaf(g, wr, 0.0f);
+    float pg = fmaf(g, wg, 0.0f);
+    float pb = fmaf(g, wb, 0.0f);
     *cr = pr * shade;
     *cg = pg * shade;
     *cb = pb * shade;
@@ -567,14 +644,14 @@ static void portal_ramp(float shade, float luma, float edge, float knee,
 
 /* Per-cell dotportal sprite. Shared by dotportal() and the debug
  * sprdump — the MSL mirror is gather_portal in metal_fx.m (lockstep). */
-static int portal_cell(const uint8_t *pixels, int width, int height, int stride,
+static int portal_cell(const float *plane, int width, int height,
                        int sx, int sy, int step, float luma,
                        const dotportal_params_t *params,
                        int split, int bright,
                        sprite_t *s)
 {
     float shade, shx, shy, edge;
-    local_shade(pixels, width, height, stride, sx, sy, step, luma,
+    local_shade(plane, width, height, sx, sy, step, luma,
                 &shade, &shx, &shy, &edge);
 
     /* halftone: radius factor from the cell's own tone. */
@@ -582,6 +659,19 @@ static int portal_cell(const uint8_t *pixels, int width, int height, int stride,
     float rf = fmaf(hs, luma, 1.0f - hs);
     if (rf < 0.05f) rf = 0.05f;
     if (rf > 1.0f) rf = 1.0f;
+
+    /* crisp (2.3): shrink dots at high local contrast — silhouette cells
+     * (high edge) draw smaller, soft interiors (low edge) stay full.
+     * k = crisp/100 * e01 (the gate's 0..1 contrast idiom); rf *= (1-k)
+     * as one fma. crisp = 0 leaves rf bit-exactly as the halftone ramp
+     * produced it (the whole block is dead). MSL mirror in gather_portal. */
+    if (params->crisp > 0) {
+        float crisp01 = fmaf((float)params->crisp, 0.01f, 0.0f);
+        float e01 = edge * 4.0f;
+        if (e01 > 1.0f) e01 = 1.0f;
+        float k = fmaf(crisp01, e01, 0.0f);
+        rf = fmaf(k, -rf, rf);
+    }
 
     /* separation: radius as a fraction of the grid step. */
     float fill01 = fmaf((float)params->fill, 0.01f, 0.0f);
@@ -609,11 +699,11 @@ static int portal_cell(const uint8_t *pixels, int width, int height, int stride,
     int fcy = (int)s->y;
     int subject = 0;
     if (fcx >= 0 && fcy >= 0 && fcx < width && fcy < height) {
-        float lc = luma_at(pixels, width, height, stride, fcx, fcy);
+        float lc = luma_at(plane, width, height, fcx, fcy);
         subject = bright ? (lc > T) : (lc < T);
     }
-    portal_ramp(shade, luma, edge, knee, params->color, subject,
-                &s->cr, &s->cg, &s->cb);
+    portal_ramp(shade, luma, edge, knee, params->color, params->color2,
+                subject, &s->cr, &s->cg, &s->cb);
     /* level: brightness gain (100 = 1x) — pinned multiply, MSL mirror
      * writes fma(pr*shade, lv, 0) so neither compiler re-associates. */
     float lv = fmaf((float)params->level, 0.01f, 0.0f);
@@ -654,23 +744,49 @@ void dotportal(uint8_t *pixels, int width, int height, int stride,
     int step = params->size / 2;
     if (step < 2) step = 2;
 
+    const float *plane = dot_luma_plane(pixels, width, height, stride);
+    if (!plane)
+        return; /* cannot allocate; leave buffer untouched */
+
     int cols = (width + step - 1) / step;
     int rows = (height + step - 1) / step;
-    sprite_t *spr = malloc((size_t)cols * (size_t)rows * sizeof(sprite_t));
+    sprite_t *spr = (sprite_t *)fx_scratch(0, (size_t)cols * (size_t)rows * sizeof(sprite_t));
     if (!spr)
         return; /* nothing written yet — frame untouched */
-    int n = 0;
-
-    /* 1) gather from the ORIGINAL pixels. */
-    for (int sy = step / 2; sy < height; sy += step) {
-        const uint8_t *row = pixels + (size_t)sy * (size_t)stride;
-        for (int sx = step / 2; sx < width; sx += step) {
-            const uint8_t *q = row + (size_t)sx * 3;
-            float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
-            sprite_t s;
-            if (portal_cell(pixels, width, height, stride, sx, sy, step, luma,
-                            params, split, bright, &s))
-                spr[n++] = s;
+    /* 1) gather from the ORIGINAL pixels — same row-parallel structure
+     * as dotgate(): independent rows over dispatch_apply, each cell
+     * writing its precomputed (row * cols_a + col) slot in the exact
+     * row-major order of the old running counter. */
+    int cols_a = (step / 2 < width) ? (width - 1 - step / 2) / step + 1 : 0;
+    int rows_a = (step / 2 < height) ? (height - 1 - step / 2) / step + 1 : 0;
+    int n = rows_a * cols_a;
+    if (rows_a > 1) {
+        dispatch_apply(rows_a, DISPATCH_APPLY_AUTO, ^(size_t k) {
+            int sy = step / 2 + (int)k * step;
+            const uint8_t *row = pixels + (size_t)sy * (size_t)stride;
+            for (int j = 0; j < cols_a; j++) {
+                int sx = step / 2 + j * step;
+                const uint8_t *q = row + (size_t)sx * 3;
+                float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
+                sprite_t s;
+                portal_cell(plane, width, height, sx, sy, step, luma,
+                            params, split, bright, &s);
+                spr[k * cols_a + j] = s;
+            }
+        });
+    } else {
+        for (int k = 0; k < rows_a; k++) {
+            int sy = step / 2 + k * step;
+            const uint8_t *row = pixels + (size_t)sy * (size_t)stride;
+            for (int j = 0; j < cols_a; j++) {
+                int sx = step / 2 + j * step;
+                const uint8_t *q = row + (size_t)sx * 3;
+                float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
+                sprite_t s;
+                portal_cell(plane, width, height, sx, sy, step, luma,
+                            params, split, bright, &s);
+                spr[k * cols_a + j] = s;
+            }
         }
     }
 
@@ -692,7 +808,6 @@ void dotportal(uint8_t *pixels, int width, int height, int stride,
         }
     }
     fx_emit(spr, n, pixels, width, height, stride);
-    free(spr);
 }
 
 
@@ -743,17 +858,22 @@ void dot_spacengrave(uint8_t *pixels, int width, int height, int stride,
         return;
     if (params->fill < 0 || params->halftone < 0 || params->line < 0 ||
         params->level < 0 || params->grain < 0 || params->color < 0 ||
-        params->dim < 0 || params->gate < 0)
+        params->dim < 0 || params->gate < 0 || params->texture < 0 ||
+        params->contour < 0)
         return; /* invalid params: leave the frame untouched */
     if (params->size < 2)
         return; /* 0 = off (identity); 1 = sub-pixel pitch, no sensible ink */
     (void)frame; /* reserved: the field is time-invariant */
 
     const size_t nb = (size_t)width * (size_t)height * 3;
-    uint8_t *src = (uint8_t *)malloc(nb);
+    uint8_t *src = fx_scratch(1, nb);
     if (!src)
         return; /* nothing written yet — frame untouched */
     memcpy(src, pixels, nb);
+
+    const float *plane = dot_luma_plane(pixels, width, height, stride);
+    if (!plane)
+        return; /* cannot allocate; leave buffer untouched */
 
     int pitch = params->size;
     int probe = pitch / 2;
@@ -785,6 +905,23 @@ void dot_spacengrave(uint8_t *pixels, int width, int height, int stride,
     float half01 = (float)params->halftone * 0.01f; /* 0..1 */
     float keep = 1.0f - (float)params->dim * 0.01f; /* 1 = photo, 0 = black */
 
+    /* Second dash layer (2.2): half pitch, half stroke width, same 1/4
+     * centring and grain/halftone response; baseline coverage = the
+     * `texture` dial. texture = 0 → tri2 stays 0 and every second-layer
+     * block below is dead code — output byte-identical to the
+     * single-layer effect. */
+    float tex01 = (float)params->texture * 0.01f;
+    int pitch2 = pitch / 2;
+    if (pitch2 < 2) pitch2 = 2;
+    float half2 = half * 0.5f;
+    float inv_pitch2 = 1.0f / (float)pitch2;
+
+    /* Contour tilt (2.4): blend the stroke axis from the row toward the
+     * local iso-luma contour. contour = 0 → c01 = 0 → the per-pixel
+     * blend below is dead (fma(0, x, y) == y exactly) and the loop
+     * keeps the per-row envelope — byte-identical to the pre-2.4 code. */
+    float c01 = (float)params->contour * 0.01f; /* 0..1 */
+
     /* dim: GLOBAL source removal — the dot.gate / dot.portal idiom
      * ("the base is removed (black behind the dots)"): the WHOLE frame
      * is dimmed, not just the inked pixels. Dimming only inside the ink
@@ -798,32 +935,77 @@ void dot_spacengrave(uint8_t *pixels, int width, int height, int stride,
     }
 
     for (int y = 0; y < height; y++) {
-        float phase = (float)(y % pitch) * inv_pitch;
-        float d = fabsf(phase - 0.25f); /* stroke centred at 1/4 of period */
-        float tri = (d >= half) ? 0.0f : (1.0f - d / half);
-        if (tri <= 0.0f)
-            continue; /* off the stroke: untouched source */
+        /* Stroke envelope. contour 0 (default): the phase axis is the
+         * row — computed once per row, and a row off both strokes is
+         * skipped entirely (the pre-2.4 fast path, byte-identical).
+         * contour > 0 (2.4): the axis tilts toward the local iso-luma
+         * contour, so the envelope is per-pixel (from shx/shy below). */
+        float row_tri = 0.0f, row_tri2 = 0.0f;
+        if (c01 == 0.0f) {
+            float phase = (float)(y % pitch) * inv_pitch;
+            float d = fabsf(phase - 0.25f); /* stroke centred at 1/4 of period */
+            row_tri = (d >= half) ? 0.0f : (1.0f - d / half);
+            if (tex01 > 0.0f) {
+                float phase2 = (float)(y % pitch2) * inv_pitch2;
+                float d2 = fabsf(phase2 - 0.25f);
+                row_tri2 = (d2 >= half2) ? 0.0f : (1.0f - d2 / half2);
+            }
+            if (row_tri <= 0.0f && row_tri2 <= 0.0f)
+                continue; /* off both strokes: untouched source */
+        }
         uint8_t *row = pixels + (size_t)y * (size_t)stride;
         for (int x = 0; x < width; x++) {
-            float l0 = luma_at(src, width, height, stride, x, y);
+            float l0 = luma_at(plane, width, height, x, y);
             float shade, shx, shy, edge;
-            local_shade(src, width, height, stride, x, y, probe, l0,
+            local_shade(plane, width, height, x, y, probe, l0,
                         &shade, &shx, &shy, &edge);
-            (void)shade; (void)shx; (void)shy;
+            (void)shade;
+            float tri, tri2;
+            if (c01 == 0.0f) {
+                tri = row_tri;
+                tri2 = row_tri2;
+            } else {
+                /* Contour (2.4): the phase coordinate u blends the row
+                 * (y) toward the gradient-perpendicular coordinate
+                 * (shx*fy - shy*x, the iso-luma contour direction).
+                 * Flat (n == 0) keeps the axis vertical. fmod matches
+                 * (y % pitch) exactly at u == y. */
+                float fy = (float)y;
+                float u = fy;
+                float n = sqrtf(fmaf(shx, shx, fmaf(shy, shy, 0.0f)));
+                if (n > 0.0f) {
+                    float u_c = fmaf(shx / n, fy,
+                                     fmaf(-(shy / n), (float)x, 0.0f));
+                    u = fmaf(c01, u_c - fy, fy);
+                }
+                float phase = fmodf(u, (float)pitch);
+                if (phase < 0.0f) phase += (float)pitch;
+                phase *= inv_pitch;
+                float d = fabsf(phase - 0.25f);
+                tri = (d >= half) ? 0.0f : (1.0f - d / half);
+                tri2 = 0.0f;
+                if (tex01 > 0.0f) {
+                    float phase2 = fmodf(u, (float)pitch2);
+                    if (phase2 < 0.0f) phase2 += (float)pitch2;
+                    phase2 *= inv_pitch2;
+                    float d2 = fabsf(phase2 - 0.25f);
+                    tri2 = (d2 >= half2) ? 0.0f : (1.0f - d2 / half2);
+                }
+                if (tri <= 0.0f && tri2 <= 0.0f)
+                    continue; /* off both strokes: untouched source */
+            }
             float e = edge * 4.0f;
             if (e > 1.0f) e = 1.0f; /* 0..1 local contrast */
 
-            if (gate_on) {
-                /* Subject gate: ink only where local contrast reaches the
-                 * knee AND the pixel is on the subject side of the split —
-                 * the exact portal_ramp pf test. Background pixels pass
-                 * through (dimmed, no ink). */
-                if (e < knee)
-                    continue;
-                int subject = bright ? (l0 > T) : (l0 < T);
-                if (!subject)
-                    continue;
-            }
+            /* Subject gate: both layers ink only where local contrast
+             * reaches the knee AND the pixel is on the subject side of
+             * the split — the exact portal_ramp pf test. Background
+             * pixels pass through (dimmed, no ink). */
+            int pass = 1;
+            if (gate_on)
+                pass = (e >= knee) && (bright ? (l0 > T) : (l0 < T));
+            if (!pass)
+                continue;
 
             float cov = bias
                       - grain01 * (e - 0.5f)
@@ -837,26 +1019,46 @@ void dot_spacengrave(uint8_t *pixels, int width, int height, int stride,
              * y term keeps each row's dashes independent (an x-only
              * dither correlates them into vertical bars). */
             float t = fx_rand01(0u, 0u, (uint32_t)x, (uint32_t)y);
-            if (cov < t)
-                continue; /* dashed off at this x */
-
-            float ink = 255.0f * tri * lv * (0.15f + 0.85f * l0);
-            int ar = (int)(ink * wr + (ink * wr >= 0.0f ? 0.5f : -0.5f));
-            int ag = (int)(ink * wg + (ink * wg >= 0.0f ? 0.5f : -0.5f));
-            int ab = (int)(ink * wb + (ink * wb >= 0.0f ? 0.5f : -0.5f));
-            if (ar < 0) ar = 0;
-            if (ag < 0) ag = 0;
-            if (ab < 0) ab = 0;
+            int ar = 0, ag = 0, ab = 0;
+            if (cov >= t) { /* dashed on at this x */
+                float ink = 255.0f * tri * lv * (0.15f + 0.85f * l0);
+                ar = (int)(ink * wr + (ink * wr >= 0.0f ? 0.5f : -0.5f));
+                ag = (int)(ink * wg + (ink * wg >= 0.0f ? 0.5f : -0.5f));
+                ab = (int)(ink * wb + (ink * wb >= 0.0f ? 0.5f : -0.5f));
+                if (ar < 0) ar = 0;
+                if (ag < 0) ag = 0;
+                if (ab < 0) ab = 0;
+            }
+            /* Second layer: its own dither seed, its own baseline coverage
+             * (`texture`%), same grain/halftone response and ink model —
+             * additive under the same 255-clip (integer sums, exact). */
+            int br2 = 0, bg2 = 0, bb2 = 0;
+            if (tex01 > 0.0f && tri2 > 0.0f) {
+                float cov2 = tex01
+                           - grain01 * (e - 0.5f)
+                           + half01 * (l0 - 0.5f);
+                if (cov2 < 0.0f) cov2 = 0.0f;
+                if (cov2 > 1.0f) cov2 = 1.0f;
+                float t2 = fx_rand01(1u, 0u, (uint32_t)x, (uint32_t)y);
+                if (cov2 >= t2) {
+                    float ink2 = 255.0f * tri2 * lv * (0.15f + 0.85f * l0);
+                    br2 = (int)(ink2 * wr + (ink2 * wr >= 0.0f ? 0.5f : -0.5f));
+                    bg2 = (int)(ink2 * wg + (ink2 * wg >= 0.0f ? 0.5f : -0.5f));
+                    bb2 = (int)(ink2 * wb + (ink2 * wb >= 0.0f ? 0.5f : -0.5f));
+                    if (br2 < 0) br2 = 0;
+                    if (bg2 < 0) bg2 = 0;
+                    if (bb2 < 0) bb2 = 0;
+                }
+            }
             uint8_t *q = row + (size_t)x * 3;
             int v;
             /* the frame is already globally dimmed (keep) — add the ink
-             * and clip at 255. */
-            v = (int)q[0] + ar; q[0] = (uint8_t)(v > 255 ? 255 : v);
-            v = (int)q[1] + ag; q[1] = (uint8_t)(v > 255 ? 255 : v);
-            v = (int)q[2] + ab; q[2] = (uint8_t)(v > 255 ? 255 : v);
+             * (primary + second layer) and clip at 255. */
+            v = (int)q[0] + ar + br2; q[0] = (uint8_t)(v > 255 ? 255 : v);
+            v = (int)q[1] + ag + bg2; q[1] = (uint8_t)(v > 255 ? 255 : v);
+            v = (int)q[2] + ab + bb2; q[2] = (uint8_t)(v > 255 ? 255 : v);
         }
     }
-    free(src);
 }
 /* Debug (dual hunt): per-cell gather in tid order, 10 floats per cell
  * (x, y, r, cr, cg, cb, env, shx, shy, valid). Same layout as the MSL
@@ -883,6 +1085,9 @@ void dotportal_sprdump(const uint8_t *pixels, int width, int height, int stride,
 
     int cols = (width + step - 1) / step;
     int rows = (height + step - 1) / step;
+    const float *plane = dot_luma_plane(pixels, width, height, stride);
+    if (!plane)
+        return; /* out untouched */
     for (int tid = 0; tid < cols * rows; tid++) {
         float *o = out + (size_t)tid * 10;
         int sy = step / 2 + (tid % rows) * step;
@@ -890,7 +1095,7 @@ void dotportal_sprdump(const uint8_t *pixels, int width, int height, int stride,
         const uint8_t *q = pixels + (size_t)sy * (size_t)stride + (size_t)sx * 3;
         float luma = (0.299f * q[0] + 0.587f * q[1] + 0.114f * q[2]) / 255.0f;
         sprite_t s;
-        if (portal_cell(pixels, width, height, stride, sx, sy, step, luma,
+        if (portal_cell(plane, width, height, sx, sy, step, luma,
                         params, split, bright, &s)) {
             o[0] = s.x; o[1] = s.y; o[2] = s.r;
             o[3] = s.cr; o[4] = s.cg; o[5] = s.cb;
@@ -902,11 +1107,14 @@ void dotportal_sprdump(const uint8_t *pixels, int width, int height, int stride,
     }
 }
 
-/* Debug (dual hunt): expose the exact luma_at() codegen of this dylib for
+/* Debug (dual hunt): expose the luma-plane value for one pixel for
  * tools/sprcmp -D SPRCMP_LUMA (13b localization). Square test image, so
- * height is taken as width. No math here — just the static luma_at. */
+ * height is taken as width. Same formula as the per-frame luma plane. */
 float particle_luma_at_dbg(const uint8_t *pixels, int width, int stride,
                            int x, int y)
 {
-    return luma_at(pixels, width, width, stride, x, y);
+    const float *plane = dot_luma_plane(pixels, width, width, stride);
+    if (!plane)
+        return 0.0f;
+    return luma_at(plane, width, width, x, y);
 }

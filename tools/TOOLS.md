@@ -156,3 +156,40 @@ Archived dylibs (one per effect via `-DRETROFX_EFFECT`): see
     RETROFX_BACKEND=dual ./dotpipe/dotpipe -w 1280 -h 720 --dotgate 28 8 10 < in.raw > out.raw
     # archived frei0r plugin check:
     RETROFX_BACKEND=dual archive/frei0r/f0r_host archive/frei0r/build/libretrofx_dotgate.dylib apply 1280 720
+    # or, wrapped (build + dual + PASS/FAIL in one command — see AGENTS.md):
+    tools/verify.sh testimgs/bars.ppm --dotgate 28 8 10
+
+## Playbooks
+
+Recurring multi-step procedures, written down once so a prompt can reference
+them by name instead of re-describing the steps each time.
+
+### Add a new effect dial
+
+1. Add the field to the params struct in `core/dot.h` (or the matching
+   `crt.h`/`vhs.h`/`glitch.h`), with a one-line comment giving its range and
+   what `0`/off means.
+2. Implement the math in the CPU core (`core/*.c`) — keep the effect's
+   existing `0 = off` / byte-identity convention if it has one.
+3. Mirror the identical math in the matching kernel in `core/metal_fx.m`.
+4. Wire the CLI flag in `dotpipe/dotpipe.c`: extend that flag's arg count
+   and default in its parse block, and the `<params>_t p = {...}` literal
+   that builds it.
+5. Update the flag's usage line in `dotpipe.c`'s header comment and the
+   parameter table in `README.md`.
+6. `tools/verify.sh <test-image> <flag> <params...>` at the new dial's
+   default and at least one off-default value.
+
+### Dual-verify a math change
+
+1. Build first — `tools/verify.sh` does this for you; standalone, use the
+   direct-`cc` recipe above (`make` hangs on this volume).
+2. Run `tools/verify.sh` for the changed effect against each of
+   `testimgs/{bars,flat_white,gradient}.ppm` (three different sizes/content).
+3. If the effect is time-varying (its math reads `frame`), a single still
+   frame isn't enough — also render one of `run-scripts-dotpipe/*.sh`
+   end to end with `RETROFX_BACKEND=dual` and check for a `MISMATCH` line in
+   its output, not just the one frame `verify.sh` checked.
+4. Any `MISMATCH` means the change isn't done — CPU and Metal must agree
+   byte-for-byte before moving on (AGENTS.md: CPU core is the reference).
+   Don't loosen the compare to make it pass; report the mismatch and stop.

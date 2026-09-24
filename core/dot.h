@@ -50,6 +50,8 @@ typedef struct {
     int relief;    /* 0..200, gradient displacement as % of step */
     int level;     /* 0..200, brightness gain x100 (100 = 1x, 200 = 2x) */
     int color;     /* 0..360, dot hue in degrees (125 = green; 360 = white, no tint) */
+    int color2;    /* 0..360, highlight hue (360 = white); blended in by shade — shadow-leaning dots pull toward `color`, lit-leaning toward `color2`; == color (the default) = flat hue, byte-identical */
+    int crisp;     /* 0..100, silhouette sharpening: high local-contrast dots shrink by up to crisp% of their radius; 0 = off = byte-identical */
     int glow;      /* 0..100, aura around each dot (radius x(1+g/100), colour x g/400); 0 = off */
 } dotportal_params_t;
 
@@ -103,6 +105,8 @@ typedef struct {
     int color;     /* 0..360, hue in degrees (360 = white, no tint) */
     int dim;       /* 0..100, source dimming (0 = photo visible, 100 = black behind) */
     int gate;      /* 0 = full-frame ink; 1..100 = subject-gated knee x100 (dot.portal's gate) */
+    int texture;   /* 0..100, second dash layer: half-pitch/half-width strokes with baseline coverage = this %; 0 = off = byte-identical to the single layer */
+    int contour;   /* 0..100, tilt the stroke axis toward the local iso-luma contour (engraving follows the shape); 0 = off = vertical, byte-identical */
 } dot_spacengrave_params_t;
 
 void dot_spacengrave(uint8_t *pixels, int width, int height, int stride,

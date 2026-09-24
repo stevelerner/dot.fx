@@ -19,6 +19,12 @@ Rebuild dotpipe and run the narrowest relevant check before declaring work
 done. `-Wall -Wextra -Werror` is on: any warning is a build failure,
 including unused variables.
 
+`tools/verify.sh <test-image.ppm> <effect flag> [params...]` wraps the above
+into one command — build (direct `cc`, not `make` — see tools/TOOLS.md) +
+dual byte-compare + a plain PASS/FAIL line:
+  tools/verify.sh testimgs/bars.ppm --dotgate 28 8 10
+Prefer it over composing the ffmpeg/dotpipe pipeline by hand.
+
 Archived frei0r plugin method: `archive/frei0r/` (own Makefile/README/
 PERFORMANCE; builds with `make -f archive/frei0r/Makefile <single-target>`;
 verified with `archive/frei0r/f0r_host`).
@@ -50,6 +56,12 @@ verified with `archive/frei0r/f0r_host`).
     before touching it.
   - When in doubt whether to continue: pause and ask. Asking costs one line;
     running on costs a session.
+- **Paste the raw output of `tools/verify.sh` (or the build), not a
+  paraphrase.** "It passed" is not a report — the PASS/FAIL line and its
+  tail is.
+- **Never weaken a check to make it pass.** Silencing a warning, deleting a
+  failing assertion, loosening the `dual` byte-compare — that's hiding the
+  failure, not fixing it. Report it and stop instead.
 - Smallest diff that works. Don't refactor adjacent code.
 - **CPU core is the reference.** Metal mirrors it; when they disagree the CPU
   path is right unless stated otherwise. Never change CPU math to make a GPU

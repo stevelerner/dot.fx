@@ -9,6 +9,7 @@
 
 #include "crt.h"
 #include "fx_hash.h"
+#include "fx_scratch.h"
 
 #define PI 3.14159265358979323846f
 
@@ -68,7 +69,7 @@ void crt_barrel(uint8_t *pixels, int width, int height, int stride,
     float z = 1.0f / (1.0f + amount * zoom);
 
     size_t buf_bytes = (size_t)height * (size_t)stride;
-    uint8_t *src = malloc(buf_bytes);
+    uint8_t *src = fx_scratch(0, buf_bytes);
     if (!src)
         return; /* cannot allocate; leave buffer untouched */
 
@@ -128,8 +129,6 @@ void crt_barrel(uint8_t *pixels, int width, int height, int stride,
             }
         }
     }
-
-    free(src);
 }
 void crt_scanlines(uint8_t *pixels, int width, int height, int stride,
                    const crt_scanlines_params_t *params, int frame)
@@ -338,13 +337,11 @@ void crt_bloom(uint8_t *pixels, int width, int height, int stride,
     float inv_span = 1.0f / (255.0f - cutoff);
 
     size_t buf_bytes = (size_t)height * (size_t)stride;
-    uint8_t *src   = malloc(buf_bytes); /* source snapshot */
-    uint8_t *gated = malloc(buf_bytes); /* w * RGB per pixel */
-    uint8_t *horiz = malloc(buf_bytes); /* horizontal blur result */
-    if (!src || !gated || !horiz) {
-        free(src); free(gated); free(horiz);
+    uint8_t *src   = fx_scratch(0, buf_bytes); /* source snapshot */
+    uint8_t *gated = fx_scratch(1, buf_bytes); /* w * RGB per pixel */
+    uint8_t *horiz = fx_scratch(2, buf_bytes); /* horizontal blur result */
+    if (!src || !gated || !horiz)
         return; /* cannot allocate; leave buffer untouched */
-    }
 
     /* 1) Snapshot + soft luma gate. */
     for (int y = 0; y < height; y++) {
@@ -403,8 +400,6 @@ void crt_bloom(uint8_t *pixels, int width, int height, int stride,
             }
         }
     }
-
-    free(src); free(gated); free(horiz);
 }
 
 /* §6.5 Vignette.

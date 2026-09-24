@@ -25,6 +25,7 @@
 
 #include "glitch.h"
 #include "fx_hash.h"
+#include "fx_scratch.h"
 
 #define GL_SEED_BASE 0x746736u /* vid.glitch */
 
@@ -281,7 +282,7 @@ void vid_glitch(uint8_t *pixels, int width, int height, int stride,
 
     /* Full-frame snapshot: displaced/split reads never see written output. */
     size_t nb = (size_t)height * (size_t)stride;
-    uint8_t *src = malloc(nb);
+    uint8_t *src = fx_scratch(0, nb);
     if (!src)
         return; /* cannot allocate; leave buffer untouched */
     memcpy(src, pixels, nb);
@@ -366,6 +367,4 @@ void vid_glitch(uint8_t *pixels, int width, int height, int stride,
             d[2] = fx_byte(cb + n);
         }
     }
-
-    free(src);
 }

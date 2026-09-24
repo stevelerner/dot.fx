@@ -9,6 +9,7 @@
 
 #include "vhs.h"
 #include "fx_hash.h"
+#include "fx_scratch.h"
 
 static int fx_valid(const uint8_t *pixels, int width, int height, int stride)
 {
@@ -75,7 +76,7 @@ void vhs_chroma_bleed(uint8_t *pixels, int width, int height, int stride,
 
     float shift = (float)radius * amount;
 
-    uint8_t *rowbuf = malloc((size_t)width * 3);
+    uint8_t *rowbuf = fx_scratch(0, (size_t)width * 3);
     if (!rowbuf)
         return; /* cannot allocate; leave buffer untouched */
 
@@ -96,8 +97,6 @@ void vhs_chroma_bleed(uint8_t *pixels, int width, int height, int stride,
             /* d[1] (green anchor) untouched. */
         }
     }
-
-    free(rowbuf);
 }
 
 /* §6.1 Luma ring: a signed edge-slope amplitude modulates a fixed spatial
@@ -122,7 +121,7 @@ void vhs_luma_ring(uint8_t *pixels, int width, int height, int stride,
     float pi = 3.14159265358979323846f;
     float step = 2.0f * pi / (float)params->wavelength;
 
-    float *Y = malloc((size_t)width * sizeof *Y);
+    float *Y = (float *)fx_scratch(0, (size_t)width * sizeof *Y);
     if (!Y)
         return; /* cannot allocate; leave buffer untouched */
 
@@ -157,8 +156,6 @@ void vhs_luma_ring(uint8_t *pixels, int width, int height, int stride,
             p[2] = fx_fromf((float)p[2] + dY);
         }
     }
-
-    free(Y);
 }
 
 /* §6.8 Rainbow v2 (Gate A rework) — crawling fringe.
@@ -203,12 +200,10 @@ void vhs_rainbow_phase(uint8_t *pixels, int width, int height, int stride,
     float time_ph = 2.0f * pi / (float)params->period_t;
     const float max_shift = 8.0f; /* px at full slope, full beat, amount 1 */
 
-    float *Y = malloc((size_t)width * sizeof *Y);
-    uint8_t *rowbuf = malloc((size_t)width * 3);
-    if (!Y || !rowbuf) {
-        free(Y); free(rowbuf);
+    float *Y = (float *)fx_scratch(0, (size_t)width * sizeof *Y);
+    uint8_t *rowbuf = fx_scratch(1, (size_t)width * 3);
+    if (!Y || !rowbuf)
         return; /* cannot allocate; leave buffer untouched */
-    }
 
     for (int y = 0; y < height; y++) {
         uint8_t *row = pixels + (size_t)y * (size_t)stride;
@@ -245,8 +240,6 @@ void vhs_rainbow_phase(uint8_t *pixels, int width, int height, int stride,
             /* out[1] (green anchor) untouched; s = 0 ⇒ d = 0 ⇒ no-op. */
         }
     }
-
-    free(Y); free(rowbuf);
 }
 
 /* §6.9 Tape wow (flutter): capstan wobble modulates tape speed, so the
@@ -277,7 +270,7 @@ void vhs_tape_wow(uint8_t *pixels, int width, int height, int stride,
                sinf(2.0f * pi * fr / (float)params->period);
 
     size_t buf_bytes = (size_t)height * (size_t)stride;
-    uint8_t *src = malloc(buf_bytes);
+    uint8_t *src = fx_scratch(0, buf_bytes);
     if (!src)
         return; /* cannot allocate; leave buffer untouched */
 
@@ -315,6 +308,4 @@ void vhs_tape_wow(uint8_t *pixels, int width, int height, int stride,
             }
         }
     }
-
-    free(src);
 }

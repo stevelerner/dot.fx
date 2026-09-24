@@ -32,8 +32,8 @@
  *   --rainbow <amount 0-1> <period_y> <period_t>
  *   --wow <amplitude> [period]
  *   --dotgate <size> [speed [gate]]
- *   --dotportal <size> [fill [gate [halftone [relief [level [glow [color]]]]]]]
- *   --spacengrave <size> [fill [halftone [line [level [grain [color [dim [gate]]]]]]]]
+ *   --dotportal <size> [fill [gate [halftone [relief [level [glow [color [color2 [crisp]]]]]]]]]]]
+ *   --spacengrave <size> [fill [halftone [line [level [grain [color [dim [gate [texture [contour]]]]]]]]]]]]
  *   --glitch <amount> [rgb [noise [bands [blocks [scan [quant [vtear [seed]]]]]]]]
  *
  * 0-100 adapter dials convert to core values as in frei0r-adapter/
@@ -212,8 +212,12 @@ int main(int argc, char **argv)
     int   gate_size = 24, gate_speed = 6, gate_gate = 10;           /* dot.gate: dot pitch px, wobble px, subject knee ×100 */
     int   p_size = 24, p_fill = 55, p_gate = 5, p_halftone = 70;    /* dot.portal: pitch px, radius % of step, gate ×100, tone tracking */
     int   p_relief = 50, p_level = 200, p_glow = 60, p_color = 360; /* dot.portal: relief % of step, brightness ×100, aura, hue (360 = white) */
+    int   p_color2 = 360;                                           /* dot.portal: highlight hue (360 = white); default tracks `color` = flat */
+    int   p_crisp = 0;                                              /* dot.portal: silhouette sharpening % (0 = off) */
     int   s_size = 5, s_fill = 45, s_halftone = 60, s_line = 75;    /* spacengrave: pitch px, stroke % of pitch, ink shading, baseline solidity */
     int   s_level = 100, s_grain = 65, s_color = 360, s_dim = 100, s_gate = 30; /* brightness ×100, dash break-up, hue, photo dimming, gate ×100 */
+    int   s_texture = 0;                                  /* spacengrave: second dash layer baseline coverage % (0 = off) */
+    int   s_contour = 0;                                  /* spacengrave: stroke axis tilt toward local contours % (0 = off = vertical) */
     int   vg_amount = 30, vg_rgb = 4, vg_noise = 8, vg_bands = 45;  /* glitch: burst frequency, RGB split, static, slice tears */
     int   vg_blocks = 0, vg_scan = 0, vg_quant = 0, vg_vtear = 28, vg_seed = 3; /* glitch: tiles, scan jitter, posterize, v-sync tear, seed */
 
@@ -315,8 +319,8 @@ int main(int argc, char **argv)
             if (n > 2) gate_gate = v[2];
             order[nsteps++] = FX_DOTGATE;
         } else if (strcmp(a, "--dotportal") == 0) {
-            int v[8] = {0, 0, 0, 0, 0, 0, 0, 0};
-            int n = opt_ints(argc, argv, &i, 1, 7, v);
+            int v[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+            int n = opt_ints(argc, argv, &i, 1, 9, v);
             if (n < 0) die("--dotportal needs 1 arg");
             p_size     = v[0];
             if (n > 1) p_fill     = v[1];
@@ -326,10 +330,13 @@ int main(int argc, char **argv)
             if (n > 5) p_level    = v[5];
             if (n > 6) p_glow     = v[6];
             if (n > 7) p_color    = v[7];
+            if (n > 8) p_color2   = v[8];
+            if (n > 9) p_crisp    = v[9];
+            else       p_color2  = p_color; /* ungiven: same hue = flat, byte-identical */
             order[nsteps++] = FX_DOTPORTAL;
         } else if (strcmp(a, "--spacengrave") == 0) {
-            int v[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-            int n = opt_ints(argc, argv, &i, 1, 8, v);
+            int v[11] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+            int n = opt_ints(argc, argv, &i, 1, 10, v);
             if (n < 0) die("--spacengrave needs 1 arg");
             s_size     = v[0];
             if (n > 1) s_fill     = v[1];
@@ -340,6 +347,8 @@ int main(int argc, char **argv)
             if (n > 6) s_color    = v[6];
             if (n > 7) s_dim      = v[7];
             if (n > 8) s_gate     = v[8];
+            if (n > 9) s_texture  = v[9];
+            if (n > 10) s_contour = v[10];
             order[nsteps++] = FX_SPACENGRAVE;
         } else if (strcmp(a, "--glitch") == 0) {
             int v[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -496,6 +505,8 @@ int main(int argc, char **argv)
                     .relief   = p_relief,
                     .level    = p_level,
                     .color    = p_color,
+                    .color2   = p_color2,
+                    .crisp    = p_crisp,
                     .glow     = p_glow,
                 };
                 run_paired(px, w, h, w * 3, &p, tf,
@@ -512,6 +523,8 @@ int main(int argc, char **argv)
                     .color    = s_color,
                     .dim      = s_dim,
                     .gate     = s_gate,
+                    .texture  = s_texture,
+                    .contour  = s_contour,
                 };
                 run_paired(px, w, h, w * 3, &p, tf,
                            (dotpipe_cpu_fn)dot_spacengrave,

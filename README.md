@@ -83,8 +83,8 @@ anywhere; `[-i input] [-o output]` overrides the defaults):
 
 | Thumbnail | Script | Output |
 |---|---|---|
-| [![spacengrave](docs/screenshots/thumb-spacengrave.jpg)](docs/screenshots/full-model-spacengrave.jpg) | `run-scripts-dotpipe/model-gamma-spacengrave-metal.sh` | `outputvideos/model-gamma-spacengrave-dotpipe.mp4` |
-| [![vintage](docs/screenshots/thumb-vintage.jpg)](docs/screenshots/full-model-vintage.jpg) | `run-scripts-dotpipe/model-vintage-cpu.sh` | `outputvideos/model-vintage-dotpipe.mp4` |
+| [![spacengrave](docs/screenshots/model-spacengrave.jpg)](docs/screenshots/full-model-spacengrave.jpg) | `run-scripts-dotpipe/model-gamma-spacengrave-metal.sh` | `outputvideos/model-gamma-spacengrave-dotpipe.mp4` |
+| [![vintage](docs/screenshots/model-vintage.jpg)](docs/screenshots/full-model-vintage.jpg) | `run-scripts-dotpipe/model-vintage-cpu.sh` | `outputvideos/model-vintage-dotpipe.mp4` |
 
 ### Effect parameters
 

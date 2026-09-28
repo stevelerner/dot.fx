@@ -19,6 +19,7 @@ inputvideos/*
 outputvideos/*
 !inputvideos/model.mp4
 !outputvideos/model-gamma-spacengrave-dotpipe.mp4
+!outputvideos/model-vintage-dotpipe.mp4
 
 # scratch (local debug tools + sources)
 scratch/

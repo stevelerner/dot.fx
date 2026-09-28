@@ -15,6 +15,10 @@ ffmpeg -i in.mov -f rawvideo -pix_fmt rgb24 - | \
   ffmpeg -f rawvideo -pix_fmt rgb24 -s 1280x720 -i - out.mp4
 ```
 
+**No build needed** - a prebuilt universal (Apple silicon + Intel) binary
+ships with the GitHub Releases: download, extract, run. If macOS complains on
+first run: `xattr -d com.apple.quarantine dotpipe`
+
 **These thumbnails are small - they don't show the full depth of the effects. Click any of them to open the full-size image.**
 
 | Original | `vid.*` vintage stack | `dot.spacengrave` |
@@ -32,39 +36,43 @@ Model: [myah](https://www.instagram.com/myahcoyle/)
 | **vintage stack** | keeps the full picture and drives it through the 9-effect CRT/VHS stack - phosphor glow, RGB edge fringing, dot-crawl color phasing, barrel distortion, vignette and slow tape drift - so it reads as a broadcast recording rather than a transform | [inputvideos/model.mp4](inputvideos/model.mp4) | [outputvideos/model-vintage-dotpipe.mp4](outputvideos/model-vintage-dotpipe.mp4) |
 | **dot.spacengrave** | erases the photo to pure black and re-emits only the subject as a screen of engraved white lines that break into dashes over texture - the “president on a dollar bill” read | [inputvideos/model.mp4](inputvideos/model.mp4) | [outputvideos/model-gamma-spacengrave-dotpipe.mp4](outputvideos/model-gamma-spacengrave-dotpipe.mp4) |
 
-## Requirements
+## Quick start
 
-- Homebrew `ffmpeg-full` (codec only - the effects never touch ffmpeg):
-  `brew install ffmpeg-full`.
-- macOS with Xcode command-line tools (`cc`, Metal framework) for the GPU
-  effects; the CPU cores are plain C and build elsewhere.
+Pick a path - both end at the same command in step 4.
 
-## Build
+**A. Shipped binary (no compiler)**
 
-```sh
-make        # → dotpipe/dotpipe
-```
+1. Download the latest `dotpipe-*-macos-universal.tar.gz` from this repo's
+   Releases page and extract it - you get one file: `dotpipe`.
+2. If macOS blocks it on first run: `xattr -d com.apple.quarantine dotpipe`
+3. Install ffmpeg (any build works - the effects never touch ffmpeg):
+   `brew install ffmpeg-full`
+4. Run:
 
-## Use
+   ```sh
+   ffmpeg -i in.mov -f rawvideo -pix_fmt rgb24 - |
+     ./dotpipe -w 720 -h 1280 --spacengrave 5 85 80 68 200 78 360 100 5 |
+     ffmpeg -f rawvideo -pix_fmt rgb24 -s 720x1280 -i - out.mp4
+   ```
 
-ffmpeg decodes to raw RGB24, dotpipe applies the effects in the order given,
-ffmpeg encodes:
+**B. Build from source**
 
-```sh
-ffmpeg -hide_banner -loglevel error -i input.mov -f rawvideo -pix_fmt rgb24 - \
-  | RETROFX_BACKEND=metal ./dotpipe/dotpipe -w 1920 -h 1080 \
-      --spacengrave 5 85 80 68 200 78 360 100 5 \
-  | ffmpeg -hide_banner -loglevel error -f rawvideo -pix_fmt rgb24 -s 1920x1080 -i - out.mp4
-```
+1. Clone this repo and `cd dot.fx`
+2. Install the tools: `xcode-select --install` (if you don't have the Xcode
+   command-line tools) and `brew install ffmpeg-full`
+3. `make` - builds `dotpipe/dotpipe` (~2 seconds)
+4. Run the step-4 command above, with `./dotpipe/dotpipe` instead of `./dotpipe`
 
 Stack effects by listing more flags, applied left to right:
 
 ```sh
-./dotpipe/dotpipe -w 1920 -h 1080 --scanlines 0.65 3 0 --dotgate 28 8 10
+./dotpipe -w 720 -h 1280 --scanlines 0.65 3 0 --dotgate 28 8 10
 ```
 
-No flags = byte-identical passthrough; `dual` cross-checks Metal vs CPU
-per frame and exits loud on mismatch.
+No flags = byte-identical passthrough; `RETROFX_BACKEND=dual` cross-checks
+Metal vs CPU per frame and exits loud on mismatch.
+
+(maintainers: `sh tools/release-build.sh [version]` builds the release binary)
 
 ### Render scripts
 

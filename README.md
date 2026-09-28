@@ -1,11 +1,11 @@
-# dot.fx
-
-Retro video effects for **FFmpeg**:
-
-- 14 independent effect cores
-- 11 `vid.*` CRT/VHS filters (including the stackable `vid.glitch`)
-- the `dot.*` family - `dot.gate` (subject-gated dot map), `dot.portal` (the subject as separated, floating dots on black), `dot.spacengrave` (the subject as an engraved line screen on black)
-- four of them - `dot.gate`, `dot.portal`, `dot.spacengrave`, `vid.glitch` - also run on the GPU via Metal; the CPU core is the reference and the byte-identical fallback when Metal is unavailable
+# dot.fx: 15 video effects for **FFmpeg**
+- 11: `vid.*` CRT/VHS filters (including the stackable `vid.glitch`)
+- 3: the `dot.*` family
+    - `dot.gate` (subject-gated dot map)
+    - `dot.portal` (the subject as separated, floating dots on black)
+    - `dot.spacengrave` (the subject as an engraved line screen on black)
+- 1: `vapor` - a stream-level slow-motion trail/haze mode, stacks after any of the above
+- GPU Acceleration: four of them - `dot.gate`, `dot.portal`, `dot.spacengrave`, `vid.glitch` - also run on the GPU via Metal; the CPU core is the reference and the byte-identical fallback when Metal is unavailable
 
 **dotpipe** is a raw-pipe effect host: ffmpeg decodes and encodes, raw frames pipe through the effects binary - works with **any** ffmpeg build:
 
@@ -110,9 +110,6 @@ Full parameter details (positional order, meanings, ranges): [**`PARAMETERS.md`*
 | [![spacengrave](docs/screenshots/thumb-spacengrave.jpg)](docs/screenshots/full-spacengrave.jpg) | `dot.spacengrave` | `--spacengrave` | the photo drops to black; the subject is re-emitted as an engraved line screen - like the president on a dollar bill (GPU) |
 | [![vapor](docs/screenshots/thumb-vapor.jpg)](docs/screenshots/full-vapor.jpg) | vapor mode (stream-level, goes last) | `--vapor` | slow-motion trail / haze |
 
-> ### 📖 Effect parameter details
-> Positional order and meanings for every flag: [**`PARAMETERS.md`**](PARAMETERS.md)
-
 ## Compute backend (`dot.gate` / `dot.portal` / `dot.spacengrave` / `vid.glitch`)
 
 Select with the `RETROFX_BACKEND` environment variable (the other `vid.*`
@@ -130,3 +127,8 @@ RETROFX_BACKEND=metal sh run-scripts-dotpipe/model-gamma-spacengrave-metal.sh
 
 Measured CPU-vs-Metal performance on the `inputvideos/` videos:
 **`PERFORMANCE.md`**.
+
+## How it works
+
+Subject gating, what makes `dot.portal` read as particles, the engraving
+model, glitch bursts, and stack order: **[`videoprocessdetails.md`](videoprocessdetails.md)**.

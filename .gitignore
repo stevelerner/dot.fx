@@ -12,6 +12,9 @@ dotpipe/dotpipe
 tools/checkmask
 tools/sprcmp
 
+# release artifacts (shipped as GitHub Release attachments, not in-repo)
+dist/
+
 # local media (test inputs + render outputs) — the two example files
 # below are exceptions: the canonical demo input/output pair (both well
 # under GitHub's 100 MB soft limit)

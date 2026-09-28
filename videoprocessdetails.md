@@ -60,6 +60,23 @@ region-bounded: a dot must pass the contrast knee *and* its center —
 **after** relief displacement — must land on the subject side of the
 Otsu split.
 
+Two later additions build on the same shade/edge values `local_shade()`
+already computes for the gate and relief:
+
+- **Duotone (`color2`)** — instead of one flat hue, each dot blends from
+  `color` in the shadow toward `color2` in the highlight, weighted by the
+  same per-cell `shade` that already drives relief. `color2` defaults to
+  `color` (flat hue, byte-identical to the pre-duotone look). Tuning note:
+  cyan reads perceptually *dark* as a highlight hue and was a hidden
+  dimmer in early passes — white or a pale hue reads bright instead.
+- **Silhouette-sharpening (`crisp`)** — blends `halftone`'s pure-tone sizing
+  with local gradient magnitude (the same `edge` the subject gate reads),
+  so high-contrast cells shrink further than tone alone would size them.
+  Combined with `relief`, this is what breaks the look out of a regular
+  grid: dots bend along the surface *and* shrink at the outline instead of
+  reading as a lattice with a shape behind it. `0` = off, reproduces the
+  pre-`crisp` sizing exactly.
+
 ### `dot.spacengrave` — the engraving
 
 The inverse construction: instead of dots, the subject is re-emitted
@@ -75,6 +92,24 @@ as **scanlines** that behave like engraved ink:
   break-up amount. *Break-up + line shading are what carry the 3D* —
   the same role halftone/relief play in portal: the pattern IS the
   subject.
+
+Two later additions:
+
+- **A second dash layer (`texture`)** — an independent higher-frequency
+  dash pass at half the pitch and half the stroke width, composited on top
+  of the primary stroke before the 255 clamp. Pure texture break-up, no
+  change to the primary stroke's geometry or dither. `0` = off, byte-identical
+  to the single-layer engraving; on the approved recipe (`fill 85`) it's a
+  structural no-op — it only reads at lower `fill`.
+- **Contour-following axis (`contour`)** — tilts the stroke's phase axis
+  toward the local iso-luma contour instead of staying locked to vertical,
+  so the line direction can follow the subject's form rather than always
+  running top-to-bottom — the difference between "engraving" and "CRT
+  scanlines" in principle. `0` = off (pure vertical, byte-identical to the
+  original construction). Tuning note: on the approved test footage it
+  reads as fine flicker/static rather than a contour, so it's kept in code
+  but left at `0` in the shipped recipe — footage with lower-frequency
+  gradients may read it differently.
 
 The approved recipe also runs a pipeline *around* the effect (see
 `run-scripts-dotpipe/model-gamma-spacengrave-metal.sh` for the per-stage docs):
@@ -93,6 +128,35 @@ The approved recipe also runs a pipeline *around* the effect (see
   expected, not an error.
 - **Encode `yuv444p`** for the dot effects — 4:2:0 chroma subsampling
   desaturates the small dots toward gray.
+
+## `vapor` mode — a stream-level trail, not a per-frame effect
+
+Unlike the `dot.*`/`vid.*` cores, `vapor` holds an accumulator *across*
+frames and composites it before writing each one, so it must run last in
+the chain — it works on whatever the effects before it produced, and frame
+N is informed by frame N-1's trail.
+
+- **Haze vs. comet tail** — `streak = 0` leaves the trail in place (an
+  in-place haze/smoke read); `streak > 0` smears it along the row (a comet
+  tail). The tail only accumulates where the source ink moved
+  *horizontally* between frames — vertical-only motion leaves no trail (an
+  earlier build fed the accumulator in place regardless of motion axis;
+  this is the fix, don't regress it).
+- **`dir`** picks which half of the horizontal smear survives: both
+  directions (default, reads as smoke), right-only, or left-only.
+- **Loop order is load-bearing** — each output frame the effect composites
+  the existing trail, writes the fresh ink, then decays the accumulator;
+  `slow` repeats an input frame N times before advancing, so decay ticks
+  per *output* frame, not per input frame. Reordering composite/write/decay
+  changes the perceived tail length even at the same `decay` value.
+- Tried and parked: `vapor` after `dot.portal` reads as smoke regardless of
+  `dir` — the portal dot field doesn't have the directional motion `vapor`
+  needs. The directional tail was tuned and approved on `dot.spacengrave`
+  output specifically.
+
+CPU-only by construction: `vapor` and its parsing live in
+`dotpipe/dotpipe.c`, not `core/`, so it has no Metal mirror and is
+byte-identical across backends by construction — nothing to dual-verify.
 
 ## `vid.glitch` — bursts, not constant distortion
 
@@ -151,4 +215,10 @@ selects `cpu` / `metal` / `dual`. The CPU core is the reference — the
 Metal path must be byte-identical (the `dual` cross-check is the
 acceptance gate; dotpipe's `dual` backend drives it). Numbers: `PERFORMANCE.md`.
 The 2048-row bound on `metal_spacengrave` is the one known, deliberate
-CPU fallback.
+CPU fallback. `vapor` has no Metal path at all — see above.
+
+Known open exception: the approved `dot.spacengrave` recipe currently shows
+a small (1–25 px/frame) CPU/Metal drift under `dual` on most frames of the
+test footage, reproducible without `--vapor` — likely a dither-boundary
+rounding case, not yet root-caused. Both backends are independently valid
+output; this is a parity gap to close, not a correctness bug in either one.

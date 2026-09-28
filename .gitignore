@@ -21,5 +21,8 @@ outputvideos/*
 !outputvideos/model-gamma-spacengrave-dotpipe.mp4
 !outputvideos/model-vintage-dotpipe.mp4
 
+# jimbots render scripts (local-only)
+run-scripts-dotpipe/jimbots-*
+
 # scratch (local debug tools + sources)
 scratch/

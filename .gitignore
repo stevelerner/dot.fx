@@ -12,9 +12,13 @@ dotpipe/dotpipe
 tools/checkmask
 tools/sprcmp
 
-# local media (test inputs + render outputs)
-inputvideos/
-outputvideos/
+# local media (test inputs + render outputs) — the two example files
+# below are exceptions: the canonical demo input/output pair (both well
+# under GitHub's 100 MB soft limit)
+inputvideos/*
+outputvideos/*
+!inputvideos/model.mp4
+!outputvideos/model-gamma-spacengrave-dotpipe.mp4
 
 # scratch (local debug tools + sources)
 scratch/

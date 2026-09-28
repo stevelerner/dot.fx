@@ -34,7 +34,7 @@
 #     dim = 100     Photo removed to pure black under the ink.
 #     gate = 5      Subject gate knee (approved on this footage).
 #
-# (Full param docs: run-scripts-dotpipe/jimbots-gamma-spacengrave.sh.)
+# (Full param docs: run-scripts-dotpipe/jimbots-gamma-spacengrave-metal.sh.)
 #
 # Backend: METAL — and GENUINELY GPU: native 720×1280 is under the
 # 2048-row Metal bound (unlike the supersampled pair, which falls back

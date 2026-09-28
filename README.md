@@ -71,9 +71,12 @@ override the defaults; 3pane also `[-w 720] [-h 1280]`):
 
 | Script | What it renders |
 |---|---|
-| `run-scripts-dotpipe/model-vintage.sh` / `jimbots-vintage.sh` | the full 9-effect `vid.*` CRT/VHS stack at locked levels |
-| `run-scripts-dotpipe/model-gamma-spacengrave.sh` / `jimbots-gamma-spacengrave.sh` | the approved `dot.spacengrave` recipe — gamma shadow lift, native resolution, effect at `5 85 80 68 200 78 360 100 5` (720×1280 is under the 2048-row Metal bound, so this one genuinely runs on the GPU) |
-| `run-scripts-dotpipe/model-compare-3pane.sh` / `jimbots-compare-3pane.sh` | three-pane hstacked comparison of the same source |
+| `run-scripts-dotpipe/model-vintage-cpu.sh` / `jimbots-vintage-cpu.sh` | the full 9-effect `vid.*` CRT/VHS stack at locked levels (CPU-only effects) |
+| `run-scripts-dotpipe/model-gamma-spacengrave-metal.sh` / `jimbots-gamma-spacengrave-metal.sh` | the approved `dot.spacengrave` recipe — gamma shadow lift, native resolution, effect at `5 85 80 68 200 78 360 100 5` (720×1280 is under the 2048-row Metal bound, so this one genuinely runs on the GPU) |
+| `run-scripts-dotpipe/model-gamma-spacengrave-vapor-metal.sh` / `jimbots-gamma-spacengrave-vapor-metal.sh` | the approved `dot.spacengrave` recipe slowed to half speed with a vapor comet trail off the moving ink (`--vapor 2 95 60 90`) |
+| `run-scripts-dotpipe/model-compare-3pane-metal.sh` / `jimbots-compare-3pane-metal.sh` | three-pane hstacked comparison of the same source |
+
+`-metal` = runs on the GPU (a Metal fallback warning fails the render), `-cpu` = CPU-only effects.
 
 ### Effect parameters (positional order)
 
@@ -98,6 +101,7 @@ source of truth for approved levels.
 | `dot.gate` | `--dotgate` | `size` dot pitch px (0 = off), <br>`speed` wobble px, <br>`gate` subject-knee ×100 (the fill knob; dark/smooth material needs 1) |
 | `dot.portal` | `--dotportal` | `size` dot pitch px (0 = off), <br>`fill` dot radius as % of step, <br>`gate` subject-knee ×100, <br>`halftone` radius tracks tone 0–100, <br>`relief` gradient displacement as % of step, <br>`level` brightness ×100 (100 = 1×), <br>`glow` aura 0–100, <br>`color` hue 0–360 (360 = white), <br>`color2` highlight hue 0–360 (360 = white) — shade-blended: shadow → `color`, lit → `color2` (default = `color`, flat), <br>`crisp` silhouette sharpening 0–100 (high-contrast dots shrink; 0 = off) |
 | `dot.spacengrave` | `--spacengrave` | `size` scanline pitch px (0 = off), <br>`fill` stroke width as % of pitch, <br>`halftone` ink follows tone 0–100, <br>`line` baseline coverage 0–100, <br>`level` ink brightness ×100 (100 = 1×), <br>`glow` texture break-up 0–100, <br>`color` hue 0–360 (360 = white), <br>`dim` source dimming 0–100 (100 = black behind), <br>`gate` subject-knee ×100 (0 = full frame), <br>`texture` second dash layer (half pitch/width) baseline coverage 0–100 (0 = off), <br>`contour` tilt the stroke axis toward the local iso-luma contour 0–100 (0 = off = vertical) |
+| vapor mode (stream-level, goes last) | `--vapor` | `slow` each frame written N times (≥1, half speed at 2), <br>`decay` trail persistence per output frame 0–100, <br>`faint` trail strength 0–100, <br>`streak` x-axis smear 0–100 (0 = in-place haze, >0 = comet tail along each row — the trail feeds only where ink advanced horizontally, so vertical motion leaves no trail) |
 
 **How the effects actually work** — subject gating, what makes
 `dot.portal` read as particles, the engraving model, glitch bursts, and
@@ -115,7 +119,7 @@ effects are CPU-only for now):
 | `dual` | runs both, byte-compares every frame; a MISMATCH means a parity regression (either output is still usable) |
 
 ```sh
-RETROFX_BACKEND=metal sh run-scripts-dotpipe/model-gamma-spacengrave.sh
+RETROFX_BACKEND=metal sh run-scripts-dotpipe/model-gamma-spacengrave-metal.sh
 ```
 
 Measured CPU-vs-Metal performance on the `inputvideos/` videos:

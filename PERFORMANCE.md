@@ -83,12 +83,12 @@ fps = frames/s the stage sustains; ≥59.94 fps (jimbots) or ≥30 fps
 
 | Script | Workload | Wall |
 |---|---|---|
-| `model-gamma-spacengrave.sh` | 274 f, GPU | 3.0 s |
-| `model-vintage.sh` | 274 f, 9-effect `vid.*` CPU stack | 16.4 s |
-| `model-compare-3pane.sh` | 274 f × 3 branches | 23.6 s |
-| `jimbots-gamma-spacengrave.sh` | 816 f, GPU | 14.3 s |
-| `jimbots-vintage.sh` | 816 f, 9-effect `vid.*` CPU stack | 113.4 s |
-| `jimbots-compare-3pane.sh` | 816 f × 3 branches | 137.7 s |
+| `model-gamma-spacengrave-metal.sh` | 274 f, GPU | 3.0 s |
+| `model-vintage-cpu.sh` | 274 f, 9-effect `vid.*` CPU stack | 16.4 s |
+| `model-compare-3pane-metal.sh` | 274 f × 3 branches | 23.6 s |
+| `jimbots-gamma-spacengrave-metal.sh` | 816 f, GPU | 14.3 s |
+| `jimbots-vintage-cpu.sh` | 816 f, 9-effect `vid.*` CPU stack | 113.4 s |
+| `jimbots-compare-3pane-metal.sh` | 816 f × 3 branches | 137.7 s |
 
 Same workloads through the archived frei0r method — within ~10 %
 (`archive/frei0r/PERFORMANCE.md`): 2.6 s / 17.9 s / 21.7 s (model),
@@ -121,5 +121,5 @@ ffmpeg -hide_banner -y -filter_threads 1 -i inputvideos/jimbots.mp4 \
   | ffmpeg -hide_banner -f rawvideo -pix_fmt rgb24 -s 1920x1080 -i - -f null -
 # repeat with RETROFX_BACKEND=metal
 # end-to-end recipes:
-time sh run-scripts-dotpipe/model-gamma-spacengrave.sh
+time sh run-scripts-dotpipe/model-gamma-spacengrave-metal.sh
 ```

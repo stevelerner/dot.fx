@@ -122,7 +122,7 @@ moving to the next.
 > `color`) and the README's parameter table row. Mirror the identical blend
 > in `gather_portal` in `core/metal_fx.m`. Verify with
 > `RETROFX_BACKEND=dual` across the parity battery in `tools/TOOLS.md`, then
-> render `run-scripts-dotpipe/model-gamma-spacengrave.sh`-style output at a
+> render `run-scripts-dotpipe/model-gamma-spacengrave-metal.sh`-style output at a
 > few `color`/`color2` combos and eyeball it. Default `color2` to the same
 > value as `color` so existing renders stay byte-identical unless the new
 > dial is touched.

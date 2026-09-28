@@ -1,5 +1,5 @@
 #!/bin/sh
-# jimbots-compare-3pane.sh — three-pane comparison of inputvideos/jimbots.mp4,
+# jimbots-compare-3pane-metal.sh — three-pane comparison of inputvideos/jimbots.mp4,
 # one source fanned into three branches, hstacked left to right:
 #
 #   LEFT   = ORIGINAL — the untouched source plate.
@@ -8,7 +8,7 @@
 #            to jimbots.mp4 at native 1920×1080.
 #   RIGHT  = GAMMA + SPAcENGRAVE — the approved "just gamma" recipe:
 #            eq=gamma=1.5 + dot.spacengrave 5 85 80 68 200 78 360 100 5
-#            (run-scripts-dotpipe/jimbots-gamma-spacengrave.sh recipe),
+#            (run-scripts-dotpipe/jimbots-gamma-spacengrave-metal.sh recipe),
 #            Metal backend.
 #
 #   out = outputvideos/jimbots_3pane-dotpipe.mp4
@@ -58,7 +58,7 @@
 #     100 \                      photo dimmed to pure black under the ink
 #     5 \                        subject gate knee (approved on this footage)
 #
-# Usage:  sh run-scripts-dotpipe/jimbots-compare-3pane.sh [-i input] [-o output]
+# Usage:  sh run-scripts-dotpipe/jimbots-compare-3pane-metal.sh [-i input] [-o output]
 #         [-w 720] [-h 1280]
 set -eu
 
@@ -74,7 +74,7 @@ while getopts "i:o:w:h:" opt; do
     o) OUT=$OPTARG ;;
     w) W=$OPTARG ;;
     h) H=$OPTARG ;;
-    *) echo "usage: sh run-scripts-dotpipe/jimbots-compare-3pane.sh [-i input] [-o output] [-w 720] [-h 1280]" >&2
+    *) echo "usage: sh run-scripts-dotpipe/jimbots-compare-3pane-metal.sh [-i input] [-o output] [-w 720] [-h 1280]" >&2
        exit 2 ;;
   esac
 done

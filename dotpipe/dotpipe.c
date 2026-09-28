@@ -35,6 +35,20 @@
  *   --dotportal <size> [fill [gate [halftone [relief [level [glow [color [color2 [crisp]]]]]]]]]]]
  *   --spacengrave <size> [fill [halftone [line [level [grain [color [dim [gate [texture [contour]]]]]]]]]]]]
  *   --glitch <amount> [rgb [noise [bands [blocks [scan [quant [vtear [seed]]]]]]]]
+ *   --vapor <slow 1+> [decay 0-100] [faint 0-100] [streak 0-100] [dir 0-2]
+ *     temporal mode — use last: repeats every output frame `slow` times
+ *     (slow motion) and adds a decaying trail fed ONLY where the ink
+ *     advances horizontally (a pixel that just lit up with ink already
+ *     in its row) — vertical motion leaves no trail, and the trail
+ *     never darkens the current frame.
+ *     streak = 0 (default): the trail fades in place around the moving
+ *       edge (haze/fog).
+ *     streak > 0: the trail is additionally smeared along the X axis
+ *       with a per-pixel decay of streak% (a horizontal tail — clear
+ *       line, no vertical spread; 90 = long tail, 70 = short tail).
+ *     dir (default 0): 0 = tail in both directions (symmetric comet,
+ *       reads as smoke), 1 = tail extends only to the RIGHT of the
+ *       feed point (a one-way left-to-right streak), 2 = only LEFT.
  *
  * 0-100 adapter dials convert to core values as in frei0r-adapter/
  * retrofx.c (e.g. scanlines 65 -> 0.65, shadowmask 4 -> 0.048,
@@ -182,6 +196,101 @@ static void run_paired(uint8_t *rgb, int w, int h, int stride,
     }
 }
 
+/* --vapor: per-output-frame trail compositing. Integer-only and
+ * deterministic; out can never fall below px (the trail only adds) and
+ * can never overflow: d = trail - px <= 255 - px, so
+ * px + d*faint/100 <= px + 255 - px = 255 for any faint <= 100. */
+static void vapor_composite(const uint8_t *px, const uint8_t *trail,
+                            uint8_t *out, size_t n, int faint)
+{
+    for (size_t i = 0; i < n; i++) {
+        int d = (int)trail[i] - (int)px[i];
+        out[i] = (uint8_t)(px[i] + (d > 0 ? d * faint / 100 : 0));
+    }
+}
+
+/* Decay the trail, feeding it ONLY where the ink advanced HORIZONTALLY:
+ * a pixel that just lit up (px > prev) AND whose left or right same-row
+ * neighbor was lit in the PREVIOUS frame — i.e. the edge moved along x.
+ * Vertical motion (ink arriving from above/below, same-row neighbors dark
+ * last frame) feeds nothing, so vertical movement leaves no trail;
+ * horizontal movement leaves one. Stationary ink never feeds, so its
+ * trail decays away. `prev` is updated in place to the current frame;
+ * the neighbor test must therefore use last-frame values captured BEFORE
+ * they are overwritten (left neighbor via carried state, right neighbor
+ * still intact). */
+static void vapor_update(uint8_t *trail, uint8_t *prev, const uint8_t *px,
+                         int w, int h, int decay)
+{
+    for (int y = 0; y < h; y++) {
+        size_t base = (size_t)y * (size_t)w * 3;
+        int left_prev_any = 0; /* was pixel x-1 lit in the previous frame */
+        for (int x = 0; x < w; x++) {
+            size_t i = base + (size_t)x * 3;
+            int old_any = prev[i] > 0 || prev[i + 1] > 0 || prev[i + 2] > 0;
+            int right_prev_any =
+                x < w - 1 && (prev[i + 3] > 0 || prev[i + 4] > 0 || prev[i + 5] > 0);
+            int lateral = left_prev_any || right_prev_any;
+            for (int c = 0; c < 3; c++) {
+                size_t j = i + (size_t)c;
+                int t = (int)trail[j] * decay / 100;
+                int d = (int)px[j] - (int)prev[j];
+                if (d > 0 && lateral && d > t)
+                    t = d;
+                prev[j] = (uint8_t)px[j];
+                trail[j] = (uint8_t)t;
+            }
+            left_prev_any = old_any;
+        }
+    }
+}
+
+/* Streak pass: smear the trail along each ROW (x axis only, per color
+ * channel) with a per-pixel decay of streak%. dir selects the tail
+ * direction: 0 = both (two passes, max — a symmetric comet, reads as
+ * smoke), 1 = right-only (single left-to-right pass — a one-way tail
+ * to the right of the feed point), 2 = left-only. The buffer is RGB24
+ * (3 bytes per pixel), so the row stride is w*3 bytes and each channel
+ * is smeared on its own. Visible reach ~ 10/(100-streak) px (90% → ~10
+ * px tail, 95% → ~20). Integer-only, deterministic, no overflow (values
+ * only ever decrease). */
+static void vapor_streak_pass(const uint8_t *trail, uint8_t *out, int w, int h,
+                              int streak, int dir)
+{
+    for (int y = 0; y < h; y++) {
+        const uint8_t *row = trail + (size_t)y * (size_t)w * 3;
+        uint8_t *g = out + (size_t)y * (size_t)w * 3;
+        for (int c = 0; c < 3; c++) {
+            if (dir == 0 || dir == 1) {
+                /* left-to-right: value propagates to the RIGHT */
+                for (int x = 0; x < w; x++) {
+                    int v = (x > 0) ? (int)g[(x - 1) * 3 + c] * streak / 100 : 0;
+                    g[x * 3 + c] =
+                        (uint8_t)(v > row[x * 3 + c] ? v : row[x * 3 + c]);
+                }
+            }
+            if (dir == 0 || dir == 2) {
+                /* right-to-left: value propagates to the LEFT. For
+                 * dir==0 both passes run and the max is kept, so each
+                 * direction is taken independently. */
+                uint8_t *t = (dir == 0) ? (g + (size_t)w * 3) : g;
+                for (int x = 0; x < w; x++)
+                    t[x * 3 + c] = row[x * 3 + c];
+                for (int x = w - 1; x >= 0; x--) {
+                    int v = (x < w - 1) ? (int)t[(x + 1) * 3 + c] * streak / 100 : 0;
+                    if (v > t[x * 3 + c])
+                        t[x * 3 + c] = (uint8_t)v;
+                }
+                if (dir == 0) {
+                    for (int x = 0; x < w; x++)
+                        if (t[x * 3 + c] > g[x * 3 + c])
+                            g[x * 3 + c] = t[x * 3 + c];
+                }
+            }
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
     int w = 0, h = 0;
@@ -220,6 +329,8 @@ int main(int argc, char **argv)
     int   s_contour = 0;                                  /* spacengrave: stroke axis tilt toward local contours % (0 = off = vertical) */
     int   vg_amount = 30, vg_rgb = 4, vg_noise = 8, vg_bands = 45;  /* glitch: burst frequency, RGB split, static, slice tears */
     int   vg_blocks = 0, vg_scan = 0, vg_quant = 0, vg_vtear = 28, vg_seed = 3; /* glitch: tiles, scan jitter, posterize, v-sync tear, seed */
+    int   vapor_slow = 0, vapor_decay = 85, vapor_faint = 20, vapor_streak = 0;  /* vapor: repeat 1+ (0 = off), trail persistence 0-100, ghost strength 0-100, x-axis streak per-px decay 0-100 (0 = haze) */
+    int   vapor_dir = 0;               /* vapor: tail direction 0 = both, 1 = right-only, 2 = left-only */
 
     int i = 1;
     while (i < argc) {
@@ -364,6 +475,17 @@ int main(int argc, char **argv)
             if (n > 7) vg_vtear  = v[7];
             if (n > 8) vg_seed   = v[8];
             order[nsteps++] = FX_GLITCH;
+        } else if (strcmp(a, "--vapor") == 0) {
+            int v[5] = {0, 0, 0, 0, 0};
+            int n = opt_ints(argc, argv, &i, 1, 4, v);
+            if (n < 0) die("--vapor needs 1 arg");
+            vapor_slow = v[0];
+            if (vapor_slow < 1) die("--vapor slow must be >= 1");
+            if (n > 1) vapor_decay = v[1];
+            if (n > 2) vapor_faint = v[2];
+            if (n > 3) vapor_streak = v[3];
+            if (n > 4) vapor_dir = v[4];
+            if (vapor_dir < 0 || vapor_dir > 2) die("--vapor dir must be 0, 1 or 2");
         } else {
             die("unknown option");
         }
@@ -375,6 +497,7 @@ int main(int argc, char **argv)
             "  effects (applied in the order given): --scanlines --mask\n"
             "  --bleed --lumar --barrel --bloom --vignette --overscan\n"
             "  --rainbow --wow --dotgate --dotportal --spacengrave --glitch\n"
+            "  --vapor (slow motion + fading trail; use last)\n"
             "  reads raw RGB24 frames from stdin, writes to stdout",
             argv[0]);
         return 1;
@@ -385,6 +508,23 @@ int main(int argc, char **argv)
     uint8_t *px = malloc(nbytes);
     if (!px)
         die("out of memory");
+
+    /* --vapor state: persistent trail buffer (zero = no trail yet), the
+     * previous output frame (for the new-edge feed), and a compositing
+     * scratch. Allocated only when the mode is on, so without the flag
+     * the frame loop is untouched (byte-identical passthrough). */
+    uint8_t *vapor_trail = NULL, *vapor_prev = NULL, *vapor_out = NULL;
+    uint8_t *vapor_smear = NULL;   /* streak scratch, only when streak > 0 */
+    if (vapor_slow > 0) {
+        vapor_trail = calloc(1, nbytes);
+        vapor_prev  = calloc(1, nbytes);
+        vapor_out   = malloc(nbytes);
+        if (vapor_streak > 0)
+            vapor_smear = malloc(nbytes);
+        if (vapor_trail == NULL || vapor_prev == NULL || vapor_out == NULL ||
+            (vapor_streak > 0 && vapor_smear == NULL))
+            die("out of memory");
+    }
 
     /* Raw pipes from ffmpeg are throughput-sensitive: 1 MiB stdio buffers
      * keep the process from stalling the pipe on every syscall. */
@@ -550,12 +690,38 @@ int main(int argc, char **argv)
             }
         }
 
-        if (fwrite(px, 1, nbytes, stdout) != nbytes)
-            die("short write on stdout");
+        if (vapor_slow > 0) {
+            /* --vapor (use last): write the frame `slow` times (slow
+             * motion), each one composited with the decaying trail;
+             * the trail ticks per OUTPUT frame, so the ghost fades
+             * smoothly across the duplicated frames. With streak > 0
+             * the trail is first smeared along the x axis (comet) —
+             * re-smeared each copy so it fades too. */
+            for (int k = 0; k < vapor_slow; k++) {
+                const uint8_t *ghost = vapor_trail;
+                if (vapor_streak > 0) {
+                    vapor_streak_pass(vapor_trail, vapor_smear, w, h,
+                                     vapor_streak, vapor_dir);
+                    ghost = vapor_smear;
+                }
+                vapor_composite(px, ghost, vapor_out, nbytes,
+                                vapor_faint);
+                if (fwrite(vapor_out, 1, nbytes, stdout) != nbytes)
+                    die("short write on stdout");
+                vapor_update(vapor_trail, vapor_prev, px, w, h, vapor_decay);
+            }
+        } else {
+            if (fwrite(px, 1, nbytes, stdout) != nbytes)
+                die("short write on stdout");
+        }
     }
 
     fflush(stdout);
     metal_fx_shutdown();
     free(px);
+    free(vapor_trail);
+    free(vapor_prev);
+    free(vapor_out);
+    free(vapor_smear);
     return 0;
 }

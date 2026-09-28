@@ -77,7 +77,7 @@ as **scanlines** that behave like engraved ink:
   subject.
 
 The approved recipe also runs a pipeline *around* the effect (see
-`run-scripts-dotpipe/model-gamma-spacengrave.sh` for the per-stage docs):
+`run-scripts-dotpipe/model-gamma-spacengrave-metal.sh` for the per-stage docs):
 
 - **2× supersample (lanczos) → effect → down** — dash geometry computed
   on a finer grid reads smoother after the downsample.

@@ -22,7 +22,7 @@ model footage** after review — kept in code, default off.
 
 ## Final state (the looks)
 
-- **dot.portal keeper** — `run-scripts-dotpipe/model-gamma-dotportal.sh`:
+- **dot.portal keeper** — `run-scripts-dotpipe/model-gamma-dotportal-metal.sh`:
   recipe `8 50 5 70 50 200 50 360 180` (fine dots at the separation limit,
   bright halo, **white→cyan duotone**, gamma-1.5 input lift, Metal,
   fallback = hard error) → `outputvideos/model-gamma-dotportal-dotpipe.mp4`

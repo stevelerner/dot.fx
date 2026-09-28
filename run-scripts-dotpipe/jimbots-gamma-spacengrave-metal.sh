@@ -1,8 +1,8 @@
 #!/bin/sh
-# model-gamma-spacengrave.sh — dot.spacengrave on model.mp4 via
+# jimbots-gamma-spacengrave-metal.sh — dot.spacengrave on jimbots.mp4 via
 # dotpipe (the raw-pipe effect host): ffmpeg decodes, dotpipe applies
 # the effect on raw frames, ffmpeg encodes. Same approved look as
-# archive/frei0r/run-scripts/model-gamma-spacengrave-metal.sh (gamma lift +
+# archive/frei0r/run-scripts/jimbots-gamma-spacengrave-metal.sh (gamma lift +
 # native recipe) — no frei0r, no plugin path; the effect engine is the
 # dotpipe binary.
 #
@@ -32,38 +32,38 @@
 # stderr is treated as a hard error (check below), so the output can
 # never silently be the CPU pass.
 #
-# Usage:  sh run-scripts-dotpipe/model-gamma-spacengrave.sh [-i input] [-o output]
-#         (defaults: inputvideos/model.mp4 → outputvideos/model-gamma-spacengrave-dotpipe.mp4)
+# Usage:  sh run-scripts-dotpipe/jimbots-gamma-spacengrave-metal.sh [-i input] [-o output]
+#         (defaults: inputvideos/jimbots.mp4 → outputvideos/jimbots-gamma-spacengrave-dotpipe.mp4)
 set -eu
 
 cd "$(dirname "$0")/.."
 
-# -- defaults (override with -i / -o) ------------------------------------
-IN=inputvideos/model.mp4
-OUT=outputvideos/model-gamma-spacengrave-dotpipe.mp4
+# -- defaults (override with -i / -o) -------------------------------------
+IN=inputvideos/jimbots.mp4
+OUT=outputvideos/jimbots-gamma-spacengrave-dotpipe.mp4
 
-# -- arg parse ------------------------------------------------------------
+# -- arg parse --------------------------------------------------------------
 while getopts "i:o:" opt; do
   case $opt in
     i) IN=$OPTARG ;;
     o) OUT=$OPTARG ;;
-    *) echo "usage: sh run-scripts-dotpipe/model-gamma-spacengrave.sh [-i input] [-o output]" >&2
+    *) echo "usage: sh run-scripts-dotpipe/jimbots-gamma-spacengrave-metal.sh [-i input] [-o output]" >&2
        exit 2 ;;
   esac
 done
 mkdir -p "$(dirname "$OUT")"
 
 # -- capture dotpipe's stderr separately: a Metal fallback warning must
-#    fail the render, not just print (checked after the pipeline) ---------
+#    fail the render, not just print (checked after the pipeline) ----------
 ERRLOG=/tmp/dotpipe-err.$$; : > "$ERRLOG"
 
 # -- source geometry (probed; the subject keeps its native resolution —
-#    no scale anywhere in the pipeline) ------------------------------------
+#    no scale anywhere in the pipeline) -------------------------------------
 W=$(ffprobe -v error -select_streams v:0 -show_entries stream=width  -of csv=p=0 "$IN")
 H=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$IN")
 R=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$IN")
 
-# -- the render pipeline (one logical command, three stages) --------------
+# -- the render pipeline (one logical command, three stages) ----------------
 # STAGE 1 — ffmpeg decode → gamma shadow lift (eq=gamma=1.5) → raw RGB24.
 #   -fps_mode passthrough: no CFR drop/dup at decode, so the frame count
 #   matches the frei0r (filtergraph) pipeline exactly for quirky sources.
@@ -86,7 +86,7 @@ ffmpeg -hide_banner -loglevel error -i "$IN" -fps_mode passthrough \
       -s "${W}x${H}" -r "$R" -i - \
       -c:v libx264 -preset medium -crf 20 -pix_fmt yuv444p "$OUT"
 
-# -- hard error on Metal fallback (see header: Backend) --------------------
+# -- hard error on Metal fallback (see header: Backend) ---------------------
 if grep -q "Metal unavailable/failed" "$ERRLOG"; then
   cat "$ERRLOG" >&2
   exit 3
